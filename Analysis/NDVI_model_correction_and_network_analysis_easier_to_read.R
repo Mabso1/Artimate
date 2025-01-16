@@ -26,11 +26,6 @@ for (i in 1:length(dat$Point_id)){
 idx_share=na.omit(idx_share)
 dat=dat[idx_share,]
 
-#T2=which(dat$Point_id %in% ID_X)
-#ss=which(dat1$Point_id[T1] %in% dat$Point_id[T2])
-#dat1$Point_id[T2][-ss]
-#which(air_temp_grouped_correct$Sample_ID==dat1$Point_id[T2][-ss][1])
-
 
 # combine the soil properties, NDVI values and climate data
 dat$soil_type=soil_soiltype_grouped_correct$soil_type
