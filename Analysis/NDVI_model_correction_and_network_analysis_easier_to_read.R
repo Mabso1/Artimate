@@ -1,249 +1,466 @@
-# read files with grouped climate data
+# analyse and read data from sentinel 2 and landsat 8
 library(readr)
-library(dplyr)
-setwd("~/Desktop/soil data analysis/climate_data_expanded_full/corrected_grouped_names") # set to your dir
 
-air_temp_grouped_correct <- read_csv("air_temp_grouped_correct.csv") # air_temp
-soil_temp_grouped_correct <- read_csv("soil_temp_grouped_correct.csv") # soil_temp
-soil_soiltype_grouped_correct <- read_csv("soil_type_grouped_correct.csv") # soil_type
-soil_water_grouped_correct <- read_csv("soil_water_grouped_correct.csv") # moisture measurement
+# read in climate data
+setwd("~/Desktop/nitrogen_phosphat_predictions/remote_sensing_data/climate data/climate_data_2015/corrected_group_names") # 2015 dir
+air_temp_2015=read_csv("air_temp_grouped_correct.csv")
+soil_temp_2015=read_csv("soil_temp_grouped_correct.csv")
+soil_type_2015=read_csv("soil_type_grouped_correct.csv")
+soil_water_2015=read_csv("soil_water_grouped_correct.csv")
 
-# read in the NDVI values and lucas soil data connected to the values
+setwd("~/Desktop/nitrogen_phosphat_predictions/remote_sensing_data/climate data/climate_data_2018/corrected_group_names") # 2018 dir
+air_temp_2018=read_csv("air_temp_grouped_correct.csv")
+soil_temp_2018=read_csv("soil_temp_grouped_correct.csv")
+soil_type_2018=read_csv("soil_type_grouped_correct.csv")
+soil_water_2018=read_csv("soil_water_grouped_correct.csv")
+
+setwd("~/Desktop/soil data analysis/climate_data_2018_ekstra/corrected_data")
+air_temp_2018_1=read_csv("air_temp_grouped_correct.csv")
+soil_temp_2018_1=read_csv("soil_temp_grouped_correct.csv")
+soil_type_2018_1=read_csv("soil_type_grouped_correct.csv")
+soil_water_2018_1=read_csv("soil_water_grouped_correct.csv")
+
+air_temp_2018_1=rbind(air_temp_2018,air_temp_2018_1)
+soil_temp_2018_1=rbind(soil_temp_2018,soil_temp_2018_1)
+soil_type_2018_1=rbind(soil_type_2018,soil_type_2018_1)
+soil_water_2018_1=rbind(soil_water_2018,soil_water_2018_1)
+
+# read in VI + lucas data
+setwd("~/Desktop/nitrogen_phosphat_predictions/remote_sensing_data/vegitation indices")
+
+#IDD=bio_subset_hc_count$ID[which(bio_subset_hc_count$cluster==1)]
+#VI_data_2018_lan8$Mean_NDVI[which(VI_data_2018_lan8$Point_id %in% IDD)]=VI_data_2018_lan8$Mean_NDVI[which(VI_data_2018_lan8$Point_id %in% IDD)]*1.03
+
+#setwd("~/Desktop/soil data analysis/new script")
+#write.csv(VI_data_2018_lan8,"landsat8.csv")
+
+# get landsat 8 data
+setwd("~/Desktop/soil data analysis/new script")
+VI_data_2018_lan8=read_csv('landsat8.csv')
+
+setwd("~/Desktop/nitrogen_phosphat_predictions/remote_sensing_data/vegitation indices")
+VI_data_2015_lan8=read_csv('landsat8_2015.csv')
+
+VI_data_2015_lan8=VI_data_2015_lan8[-grep("2018",VI_data_2015_lan8$date),]
+
+# read in the NDVI values and lucas soil data connected to the values sentinel 2 dataset
 setwd("~/Desktop/lucas_annoations") # set to your dir
-dat <- read_csv("lucas_soil_ndvi_new8_postive.csv") # lucas soil data + NDVI values
+VI_data_2018_sen2 <- read_csv("lucas_soil_ndvi_new8_postive.csv") # lucas soil data + NDVI values
 
-# find list of missing ids from the climate data (some shape file coordinates could not be found)
-idx_share=c()
-for (i in 1:length(dat$Point_id)){
-  tryCatch({
-    idx_share[i]= which(dat$Point_id[i]==air_temp_grouped_correct$Sample_ID)
-  }, error=function(e){"missing ID"}
-  )
-}
+?fnorm
 
-# remove the data points not found in the climate data
-#idx_share=which(dat$Point_id %in% air_temp_grouped_correct$Sample_ID)
-idx_share=na.omit(idx_share)
-dat=dat[idx_share,]
+##### clean up the data, one dataset at a time (eg. 2015 and 2018 separately followed by final merging) ####
+
+# load helper functions
+setwd("~/Desktop/nitrogen_phosphat_predictions/functions script")
+source("helper functions.R")
 
 
-# combine the soil properties, NDVI values and climate data
-dat$soil_type=soil_soiltype_grouped_correct$soil_type
-dat$soil_type=as.factor(dat$soil_type)
+idx_share_2018_sen2=na.omit(find_common_index(VI_data = VI_data_2018_sen2,climate_data =air_temp_2018))
+VI_data_2018_sen2=VI_data_2018_sen2[idx_share_2018_sen2,]
 
-dat=cbind(dat,soil_temp_grouped_correct[,-1],soil_water_grouped_correct[,-1],air_temp_grouped_correct[,-1])
+# ok
 
-# choose crop types of interest (see LUCAS doucmentation for crop type naming)
-dat=dat[dat$LC %in% c("B11","B13","B16"), ] # "B13", "B16" "B81","B82" ,"B31","B32","B81","B82"  B11= wheat, B13= barley, B16=maize, B31=
+idx_share_2018_lan8=find_common_index(VI_data = VI_data_2018_lan8,climate_data =air_temp_2018_1)
+idx_share_2015_lan8=find_common_index(VI_data = VI_data_2015_lan8,climate_data =air_temp_2015)
 
-# assign seasons based on dates
-library(lubridate)
-# Convert the date strings to a Date object
-dates <- as.Date(dat$date, format = "%d-%m-%y")
+# remove the non common data points and merge
+climate_2018_lan8_combined=cbind(air_temp_2018_1[,-1],soil_temp_2018_1[,-1],soil_type_2018_1[,-1],soil_water_2018_1[,-1]) # merge climate data (remove redundant id columns)
+climate_2015_lan8_combined=cbind(air_temp_2015[,-1],soil_temp_2015[,-1],soil_type_2015[,-1],soil_water_2015[,-1])
 
-# add months
-dat$month <- as.POSIXlt(dat$date)$mon + 1
+climate_2018_sen2_combined=cbind(air_temp_2018[,-1],soil_temp_2018[,-1],soil_type_2018[,-1],soil_water_2018[,-1]) # merge climate data (remove redundant id columns)
 
-# add seasons
-dat$season <- cut(dat$month,
-                  breaks = c(0, 3, 6, 9, 12),
-                  labels = c("Winter", "Spring", "Summer", "Fall"),
-                  include.lowest = TRUE)
 
-# add dates in correct format
-dat$dates= dates
+# ok
+
+climate_2015_lan8=climate_2015_lan8_combined
+climate_2018_lan8=climate_2018_lan8_combined
+climate_2018_sen2=climate_2018_sen2_combined
+
+# ok
+
+
+dat_2018_lan8=cbind(VI_data_2018_lan8,climate_2018_lan8[idx_share_2018_lan8,]) # combined VI and climate data 2018
+dat_2015_lan8=cbind(VI_data_2015_lan8,climate_2015_lan8[idx_share_2015_lan8,]) # combined VI and climate data 2018
+
+dat_2018_sen2=cbind(VI_data_2018_sen2,climate_2018_sen2) # combined VI and climate data 2018
+
+# ok
+
+
+#### fix the format of the data (time format and factor format) ####
+
+# assign seasons, month and correctly formatted dates
+dat_2015_lan8=add_dates(dat_2015_lan8)
+
+dat_2018_lan8=add_dates(dat_2018_lan8)
+
+dat_2018_sen2=add_dates(dat_2018_sen2)
+
+#ok
 
 # set crop types, seasons and months as factors
-dat$LC=factor(dat$LC,levels=unique(dat$LC))
-dat$season=factor(dat$season,levels=unique(dat$season))
-dat$month=factor(dat$month,levels=sort(unique(dat$month)))
+dat_2015_lan8=correct_factors(dat_2015_lan8)
 
-# add climate zone to the dataset based on lat and lon coordinates
-library(kgc)
-data=data.frame(dat$TH_LAT,dat$TH_LONG)
-names(data)=c("Latitude","Longitude")
-data <- data.frame(data, rndCoord.lat = RoundCoordinates(data$Latitude), rndCoord.lon = RoundCoordinates(data$Longitude))
-dat_climate=data.frame(data,ClimateZ=LookupCZ(data))
+dat_2018_lan8=correct_factors(dat_2018_lan8)
 
-dat$climate=dat_climate$ClimateZ # climate zones
+dat_2018_sen2=correct_factors(dat_2018_sen2)
 
-# detach to aviod bugs
-detach("package:kgc", unload = TRUE)
-detach("package:plyr", unload = TRUE)
+#ok
 
-# collect relevant features to a new data frame (soil properties)
-soil_pro=data.frame(
-  dat$climate,
-  dat$LC,
-  dat$month,
-  dat$Mean,
-  dat$season,
-  dat$pH_CaCl2,
-  dat$pH_H2O,
-  dat$EC,
-  dat$OC,
-  dat$CaCO3,
-  dat$P,
-  dat$N*1000, # set to same unit as the other soil nutrients
-  dat$K,
-  dat$soil_type,
-  dat[36:47], # soil mean temp
-  dat[72:83], # soil moisture
-  dat[108:119], # air temperature 
-  dat$Ox_Al,
-  dat$Ox_Fe,
-  dat$Point_id)
+#  add climate zones based on lat and lon coords
+dat_2015_lan8=fix_gps_format(dat_2015_lan8) # format data correctly
+dat_2018_lan8=fix_gps_format(dat_2018_lan8) # format data correctly
+dat_2018_sen2=fix_gps_format(dat_2018_sen2)
+
+#ok
+dat_2015_lan8=add_climate_zone(dat_2015_lan8)
+dat_2018_lan8=add_climate_zone(dat_2018_lan8)
+dat_2018_sen2=add_climate_zone(dat_2018_sen2)
+
+#ok
+
+# clean data leaving only air temp, mean soil water and soil temp
+mean_air_temp_2018_lan8_idx <- grep("mean_t2m_2018", names(dat_2018_lan8))
+mean_soiltemp_2018_lan8_idx <- grep("mean_soiltemp_2018", names(dat_2018_lan8))
+mean_soilwater_2018_lan8_idx <- grep("mean_soilwater_2018", names(dat_2018_lan8))
+
+mean_air_temp_2018_sen2_idx <- grep("mean_t2m_2018", names(dat_2018_sen2))
+mean_soiltemp_2018_sen2_idx <- grep("mean_soiltemp_2018", names(dat_2018_sen2))
+mean_soilwater_2018_sen2_idx <- grep("mean_soilwater_2018", names(dat_2018_sen2))
+
+mean_air_temp_2015_lan8_idx <- grep("mean_t2m_2015", names(dat_2015_lan8))
+mean_soiltemp_2015_lan8_idx <- grep("mean_soiltemp_2015", names(dat_2015_lan8))
+mean_soilwater_2015_lan8_idx <- grep("mean_soilwater_2015", names(dat_2015_lan8))
+
+# clean the data names and keep only relevant data
+dat_2015_lan8_cleaned=data.frame(
+  dat_2015_lan8$N,
+  dat_2015_lan8$OC,
+  dat_2015_lan8$EC,
+  dat_2015_lan8$K,
+  dat_2015_lan8$P,
+  dat_2015_lan8$Mean_NDVI,
+  dat_2015_lan8$climate,
+  dat_2015_lan8$LC,
+  dat_2015_lan8$month,
+  dat_2015_lan8$season,
+  dat_2015_lan8$date,
+  dat_2015_lan8$soil_type,
+  dat_2015_lan8[,mean_air_temp_2015_lan8_idx],
+  dat_2015_lan8[,mean_soiltemp_2015_lan8_idx],
+  dat_2015_lan8[,mean_soilwater_2015_lan8_idx],
+  dat_2015_lan8$Point_id,
+  dat_2015_lan8$pH_CaCl2
+)
+
+names(dat_2015_lan8_cleaned)=c("N","OC","EC","K","P","NDVI","climate","crop_type", "month","season","date","soil_type",
+                               names(dat_2015_lan8[,mean_air_temp_2015_lan8_idx]),names(dat_2015_lan8[,mean_soiltemp_2015_lan8_idx]),names(dat_2015_lan8[,mean_soilwater_2015_lan8_idx]),
+                               "ID","CaCl2")
+
+# clean the data names and keep only relevant data
+dat_2018_lan8_cleaned=data.frame(
+  dat_2018_lan8$N,
+  dat_2018_lan8$OC,
+  dat_2018_lan8$EC,
+  dat_2018_lan8$K,
+  dat_2018_lan8$P,
+  dat_2018_lan8$Mean_NDVI,
+  dat_2018_lan8$climate,
+  dat_2018_lan8$LC,
+  dat_2018_lan8$month,
+  dat_2018_lan8$season,
+  dat_2018_lan8$date,
+  dat_2018_lan8$soil_type,
+  dat_2018_lan8[,mean_air_temp_2018_lan8_idx],
+  dat_2018_lan8[,mean_soiltemp_2018_lan8_idx],
+  dat_2018_lan8[,mean_soilwater_2018_lan8_idx],
+  dat_2018_lan8$Point_id,
+  dat_2018_lan8$pH_CaCl2
+)
+
+names(dat_2018_lan8_cleaned)=c("N","OC","EC","K","P","NDVI","climate","crop_type", "month","season","date","soil_type",
+                            names(dat_2018_lan8[,mean_air_temp_2018_lan8_idx]),names(dat_2018_lan8[,mean_soiltemp_2018_lan8_idx]),names(dat_2018_lan8[,mean_soilwater_2018_lan8_idx]),
+                            "ID","CaCl2")
+
+dat_2018_sen2_cleaned=data.frame(
+  dat_2018_sen2$N,
+  dat_2018_sen2$OC,
+  dat_2018_sen2$EC,
+  dat_2018_sen2$K,
+  dat_2018_sen2$P,
+  dat_2018_sen2$Mean,
+  dat_2018_sen2$climate,
+  dat_2018_sen2$LC,
+  dat_2018_sen2$month,
+  dat_2018_sen2$season,
+  dat_2018_sen2$date,
+  dat_2018_sen2$soil_type,
+  dat_2018_sen2[,mean_air_temp_2018_sen2_idx],
+  dat_2018_sen2[,mean_soiltemp_2018_sen2_idx],
+  dat_2018_sen2[,mean_soilwater_2018_sen2_idx],
+  dat_2018_sen2$Point_id,
+  dat_2018_sen2$pH_CaCl2
+)
+
+names(dat_2018_sen2_cleaned)=c("N","OC","EC","K","P","NDVI","climate","crop_type", "month","season","date","soil_type",
+                               names(dat_2018_sen2[,mean_air_temp_2018_sen2_idx]),names(dat_2018_sen2[,mean_soiltemp_2018_sen2_idx]),names(dat_2018_lan8[,mean_soilwater_2018_lan8_idx]),
+                               "ID","CaCl2")
+
+# ok
 
 
-#soil_pro <- replace(soil_pro, soil_pro == "< LOD", NA) # set obs below limit of detection to NA
+# subset crop types
+dat_2018_sen2_cleaned=dat_2018_sen2_cleaned[dat_2018_sen2_cleaned$`crop_type` %in% c("B11","B13","B16"), ] 
+dat_2018_lan8_cleaned=dat_2018_lan8_cleaned[dat_2018_lan8_cleaned$`crop_type` %in% c("B11","B13","B16"), ] 
+dat_2015_lan8_cleaned=dat_2015_lan8_cleaned[dat_2015_lan8_cleaned$`crop_type` %in% c("B11","B13","B16"), ] 
 
-soil_pro <- replace(soil_pro, soil_pro == "< LOD", 0.0) # set obs below limit of detection to 0
+# ok
 
-names(soil_pro)=c("climate","crop_type","month","NDVI","season","CaCl2","pH2O","EC","OC","CaCO3","P","N","K","soil_type",
-                  names(dat[36:47]),names(dat[72:83]),names(dat[108:119]),"Ox_Al","Ox_Fe","ID") # name the columns accoordingly
+# add yearly climate contribution
+dat_2015_lan8_cleaned=yearly_means(dat = dat_2015_lan8_cleaned)
+dat_2018_lan8_cleaned=yearly_means(dat = dat_2018_lan8_cleaned)
+dat_2018_sen2_cleaned=yearly_means(dat = dat_2018_sen2_cleaned)
 
-# set all numeric features as numeric
-soil_pro_temp <- as.data.frame(lapply(soil_pro[,-c(1,2,3,5,14)], as.numeric))
+# ok
 
-# add back categorical features one by one
-soil_pro_temp=cbind(soil_pro_temp,soil_pro$crop_type)
-soil_pro_temp=cbind(soil_pro_temp,soil_pro$season)
-soil_pro_temp=cbind(soil_pro_temp,soil_pro$month)
-soil_pro_temp=cbind(soil_pro_temp,soil_pro$climate)
-soil_pro_temp=cbind(soil_pro_temp,soil_pro$soil_type)
+# add previous month temperature to each dataset as well
+dat_2015_lan8_cleaned=prev_moth_climate(dat_2015_lan8_cleaned,2015)
+dat_2018_lan8_cleaned=prev_moth_climate(dat_2018_lan8_cleaned,2018)
+dat_2018_sen2_cleaned=prev_moth_climate(dat_2018_sen2_cleaned,2018)
 
-# name the categorical features
-names(soil_pro_temp)[c(49:53)]=c("crop_type","season","month","climate","soil_type")
-soil_pro=soil_pro_temp
-soil_pro$dates=dat$dates
+#ok
 
-# make sure seasons and months are correctly encoded
-soil_pro$month <- as.POSIXlt(soil_pro$dates)$mon + 1
+# remove column not belonging to prev month or yearly contribution
+dat_2018_sen2_cleaned=dat_2018_sen2_cleaned[,c(1:12,49:56)]
+dat_2018_lan8_cleaned=dat_2018_lan8_cleaned[,c(1:12,49:56)]
+dat_2015_lan8_cleaned=dat_2015_lan8_cleaned[,c(1:12,49:56)]
 
-soil_pro$season=NA
+# ok
 
-soil_pro[soil_pro$month %in% c(12,1,2),]$season="Winter"
-soil_pro[soil_pro$month %in% c(3,4,5),]$season="Spring"
-soil_pro[soil_pro$month %in% c(6,7,8),]$season="Summer"
-soil_pro[soil_pro$month %in% c(9,10,11),]$season="Fall"
 
-#soil_pro$month=as.factor(soil_pro$month)
-#soil_pro$season=as.factor(soil_pro$season)
+# remove winter months and sparsely populated climate zones
+dat_2018_sen2_cleaned=dat_2018_sen2_cleaned[dat_2018_sen2_cleaned$month %in% c("5","6","7","8","9"), ]
+dat_2018_lan8_cleaned=dat_2018_lan8_cleaned[dat_2018_lan8_cleaned$month %in% c("5","6","7","8","9"), ]
+dat_2015_lan8_cleaned=dat_2015_lan8_cleaned[dat_2015_lan8_cleaned$month %in% c("5","6","7","8","9"), ]
 
-# add previous month air temperature,  soil temperature and soil moisture
-soil_pro$prev_air_temp=NA
-soil_pro$prev_soil_temp=NA
-soil_pro$prev_soil_water=NA
-for (i in 1:nrow(soil_pro)){
-  month_value <- soil_pro$month[i]  # Replace 'month_column' with the actual name of your month column
-  # air temperature
-  previous_month_temp <- soil_pro[i, paste0("mean_t2m_2018.", sprintf("%02d", month_value))]
-  soil_pro$prev_air_temp[i]=previous_month_temp
-  # soil temp
-  previous_month_soil_temp <- soil_pro[i, paste0("mean_soiltemp_2018.", sprintf("%02d", month_value))]
-  soil_pro$prev_soil_temp[i]=previous_month_soil_temp
-  # soil water content
-  previous_month_soil_water <- soil_pro[i, paste0("mean_soilwater_2018.", sprintf("%02d", month_value))]
-  soil_pro$prev_soil_water[i]=previous_month_soil_water
-}
+# ok
 
-# check names fit within the cycle of a year
-names(soil_pro[,10:21])
-names(soil_pro[,22:33])
-names(soil_pro[,34:45])
+# make sure the seasons are correctly encoded
+dat_2018_sen2_cleaned=season_check(dat_2018_sen2_cleaned)
+dat_2018_lan8_cleaned=season_check(dat_2018_lan8_cleaned)
+dat_2015_lan8_cleaned=season_check(dat_2015_lan8_cleaned)
 
-# get the yearly average for the soil moisure, soil temp and air temp
-soil_pro$soil_temp_all=rowMeans(soil_pro[,10:21], na.rm = TRUE)
-soil_pro$soil_water_all=rowMeans(soil_pro[,22:33], na.rm = TRUE)
-soil_pro$air_temp_all=rowMeans(soil_pro[,34:45], na.rm = TRUE)
+table(dat_2018_lan8_cleaned$climate)
+rm_idx1=which(dat_2018_lan8_cleaned$climate=="BSh")
+rm_idx2=which(dat_2018_lan8_cleaned$climate=="Climate Zone info missing")
 
-# collect the relevant features
-soil_pro_grp1=cbind(soil_pro[,c(1:9)],
-                    soil_pro$soil_water_all,
-                    soil_pro$soil_temp_all,
-                    soil_pro$air_temp_all,
-                    soil_pro$prev_air_temp,
-                    soil_pro$prev_soil_temp,
-                    soil_pro$prev_soil_water,
-                    soil_pro$climate,
-                    soil_pro$crop_type,
-                    soil_pro$month,
-                    soil_pro$dates,
-                    soil_pro$season,
-                    soil_pro$soil_type,
-                    soil_pro$Ox_Al,
-                    soil_pro$Ox_Fe,
-                    soil_pro$ID)
-# set correct names
-names(soil_pro_grp1)=c(names(soil_pro[,c(1:9)]),"soil_water_all","soil_temp_all","air_temp_all","prev_air_temp","prev_soil_temp",
-                       "prev_soil_water","climate","crop_type","month","dates","season","soil_type","Ox_Al","Ox_Fe","ID")
+dat_2018_lan8_cleaned=dat_2018_lan8_cleaned[-c(rm_idx1,rm_idx2),]
 
-#### small exploratory analysis ######
-library(ggplot2)
-library(dplyr)
-library(corrplot)
+table(dat_2018_sen2_cleaned$climate)
 
-# remove all points from october and prior to may
-soil_pro_grp2=soil_pro_grp1[soil_pro_grp1$month %in% c("5","6","7","8","9"), ] # losing all winter months - remove 8 and 9 too
 
-# remove points with no climate zone infromation
-rm_idx=which(soil_pro_grp2$climate=="Climate Zone info missing")
-soil_pro_grp2=soil_pro_grp2[-rm_idx,]
+table(dat_2015_lan8_cleaned$climate)
+rm_idx1=which(dat_2015_lan8_cleaned$climate=="BSh")
+rm_idx2=which(dat_2015_lan8_cleaned$climate=="Climate Zone info missing")
 
-# plot correlation of numerical features
-correlation_matrix <- cor((soil_pro_grp2[,-c(16,17,18,19,20,21,24)]),use = "complete.obs",method="pearson")
-corrplot(correlation_matrix)
+dat_2015_lan8_cleaned=dat_2015_lan8_cleaned[-c(rm_idx1,rm_idx2),]
+
+table(dat_2018_sen2_cleaned$climate)
+
+rm_idx1=which(dat_2018_sen2_cleaned$climate=="Climate Zone info missing")
+rm_idx2=which(dat_2018_sen2_cleaned$climate=="BSh")
+rm_idx3=which(dat_2018_sen2_cleaned$climate=="ET")
+rm_idx4=which(dat_2018_sen2_cleaned$climate=="Cfc")
+
+dat_2018_sen2_cleaned=dat_2018_sen2_cleaned[-c(rm_idx1,rm_idx2,rm_idx3,rm_idx4),]
+
+# make sure data is in the correct format with correct factor levels
+dat_2018_sen2_cleaned$climate=as.factor(as.character(dat_2018_sen2_cleaned$climate))
+dat_2018_sen2_cleaned$month=as.factor(as.character(dat_2018_sen2_cleaned$month))
+dat_2018_sen2_cleaned$season=as.factor(as.character(dat_2018_sen2_cleaned$season))
+dat_2018_sen2_cleaned$soil_type=as.factor(as.character(dat_2018_sen2_cleaned$soil_type))
+dat_2018_sen2_cleaned$crop_type=as.factor(as.character(dat_2018_sen2_cleaned$crop_type))
+
+idx_na=which(is.na(dat_2018_sen2_cleaned$NDVI)==TRUE)
+dat_2018_sen2_cleaned=dat_2018_sen2_cleaned[-idx_na,]
+
+
+idx_na=which(is.na(dat_2018_lan8_cleaned$NDVI)==TRUE)
+dat_2018_lan8_cleaned=dat_2018_lan8_cleaned[-idx_na,]
+
+idx_na=which(is.na(dat_2015_lan8_cleaned$NDVI)==TRUE)
+dat_2015_lan8_cleaned=dat_2015_lan8_cleaned[-idx_na,]
+
+# landsat 8
+dat_2018_lan8_cleaned$climate=as.factor(as.character(dat_2018_lan8_cleaned$climate))
+dat_2018_lan8_cleaned$month=as.factor(as.character(dat_2018_lan8_cleaned$month))
+dat_2018_lan8_cleaned$season=as.factor(as.character(dat_2018_lan8_cleaned$season))
+dat_2018_lan8_cleaned$soil_type=as.factor(as.character(dat_2018_lan8_cleaned$soil_type))
+dat_2018_lan8_cleaned$crop_type=as.factor(as.character(dat_2018_lan8_cleaned$crop_type))
+
+dat_2015_lan8_cleaned$climate=as.factor(as.character(dat_2015_lan8_cleaned$climate))
+dat_2015_lan8_cleaned$month=as.factor(as.character(dat_2015_lan8_cleaned$month))
+dat_2015_lan8_cleaned$season=as.factor(as.character(dat_2015_lan8_cleaned$season))
+dat_2015_lan8_cleaned$soil_type=as.factor(as.character(dat_2015_lan8_cleaned$soil_type))
+dat_2015_lan8_cleaned$crop_type=as.factor(as.character(dat_2015_lan8_cleaned$crop_type))
+
+# convert the data to correct formats
+dat_2018_sen2_cleaned$P[which(dat_2018_sen2_cleaned$P=="< LOD")]=0.0 # set obs below limit of detection to 0
+dat_2018_sen2_cleaned$P=as.numeric(dat_2018_sen2_cleaned$P)
+
+# landsat 8
+dat_2018_lan8_cleaned$P[which(dat_2018_lan8_cleaned$P=="< LOD")]=0.0 # set obs below limit of detection to 0
+dat_2018_lan8_cleaned$P=as.numeric(dat_2018_lan8_cleaned$P)
+
+dat_2018_lan8_cleaned$OC=as.numeric(dat_2018_lan8_cleaned$OC)
+dat_2018_lan8_cleaned$N=as.numeric(dat_2018_lan8_cleaned$N)
+
+dat_2015_lan8_cleaned$P[which(dat_2015_lan8_cleaned$P=="< LOD")]=0.0 # set obs below limit of detection to 0
+dat_2015_lan8_cleaned$P=as.numeric(dat_2015_lan8_cleaned$P)
+
+dat_2015_lan8_cleaned$OC=as.numeric(dat_2015_lan8_cleaned$OC)
+dat_2015_lan8_cleaned$N=as.numeric(dat_2015_lan8_cleaned$N)
+
+
+
+# add dummy variables for plotting
 
 # change B11, B13 and B16 to wheat barley and maize
-crop_type_natural=rep(NA,length(soil_pro_grp2$crop_type))
+crop_type_natural=rep(NA,length(dat_2018_sen2_cleaned$crop_type))
 
-B11_idx=which(soil_pro_grp2$crop_type=="B11")
-B13_idx=which(soil_pro_grp2$crop_type=="B13")
-B16_idx=which(soil_pro_grp2$crop_type=="B16")
+B11_idx=which(dat_2018_sen2_cleaned$crop_type=="B11")
+B13_idx=which(dat_2018_sen2_cleaned$crop_type=="B13")
+B16_idx=which(dat_2018_sen2_cleaned$crop_type=="B16")
 
 crop_type_natural[B11_idx]=rep("Wheat",length(B11_idx))
 crop_type_natural[B13_idx]=rep("Barley",length(B13_idx))
 crop_type_natural[B16_idx]=rep("Maize",length(B16_idx))
 
-soil_pro_grp2$crop_type_natural=crop_type_natural
+dat_2018_sen2_cleaned$crop_type_natural=crop_type_natural
 
-table(soil_pro_grp2$climate)
-
-#rm_idx1=which(soil_pro_grp2$climate=="Climate Zone info missing")
-rm_idx1=which(soil_pro_grp2$climate=="BSh")
-rm_idx2=which(soil_pro_grp2$climate=="ET")
-#rm_idx4=which(soil_pro_grp2$climate=="Cfc")
-
-soil_pro_grp2=soil_pro_grp2[-c(rm_idx1,rm_idx2),]
-
-soil_pro_grp2$climate=as.factor(as.character(soil_pro_grp2$climate))
-
-# encode climate zone dummy variable
+# change climate zones into non abbv format
 # Create a named vector for mapping
-idx_BSk=which(soil_pro_grp2$climate=="BSk")
-idx_Csa=which(soil_pro_grp2$climate=="Csa")
-idx_Csb=which(soil_pro_grp2$climate=="Csb")
-idx_Cfa=which(soil_pro_grp2$climate=="Cfa")
-idx_Cfb=which(soil_pro_grp2$climate=="Cfb")
-idx_Dfb=which(soil_pro_grp2$climate=="Dfb")
-idx_Dfc=which(soil_pro_grp2$climate=="Dfc")
+idx_BSk=which(dat_2018_sen2_cleaned$climate=="BSk")
+idx_Csa=which(dat_2018_sen2_cleaned$climate=="Csa")
+idx_Csb=which(dat_2018_sen2_cleaned$climate=="Csb")
+idx_Cfa=which(dat_2018_sen2_cleaned$climate=="Cfa")
+idx_Cfb=which(dat_2018_sen2_cleaned$climate=="Cfb")
+idx_Dfb=which(dat_2018_sen2_cleaned$climate=="Dfb")
+idx_Dfc=which(dat_2018_sen2_cleaned$climate=="Dfc")
 
-soil_pro_grp2$climate_full=rep(NA,length(soil_pro_grp2$climate))
-soil_pro_grp2$climate_full[idx_BSk]="Bsk (Cold semi-arid climate)"
-soil_pro_grp2$climate_full[idx_Csa]="Csa (Hot-summer Mediterranean climate)"
-soil_pro_grp2$climate_full[idx_Csb]="Csb (Warm-summer Mediterranean climate)"
-soil_pro_grp2$climate_full[idx_Cfa]="Cfa (Humid subtropical climate)"
-soil_pro_grp2$climate_full[idx_Cfb]="Cfb (Temperate oceanic climate)"
-soil_pro_grp2$climate_full[idx_Dfb]="Dfb (Warm-summer humid continental climate)"
-soil_pro_grp2$climate_full[idx_Dfc]="Dfc (Subarctic climate)"
+dat_2018_sen2_cleaned$climate_full=rep(NA,length(dat_2018_sen2_cleaned$climate))
+dat_2018_sen2_cleaned$climate_full[idx_BSk]="Bsk (Cold semi-arid climate)"
+dat_2018_sen2_cleaned$climate_full[idx_Csa]="Csa (Hot-summer Mediterranean climate)"
+dat_2018_sen2_cleaned$climate_full[idx_Csb]="Csb (Warm-summer Mediterranean climate)"
+dat_2018_sen2_cleaned$climate_full[idx_Cfa]="Cfa (Humid subtropical climate)"
+dat_2018_sen2_cleaned$climate_full[idx_Cfb]="Cfb (Temperate oceanic climate)"
+dat_2018_sen2_cleaned$climate_full[idx_Dfb]="Dfb (Warm-summer humid continental climate)"
+dat_2018_sen2_cleaned$climate_full[idx_Dfc]="Dfc (Subarctic climate)"
 
-soil_pro_grp2$climate_full=as.factor(soil_pro_grp2$climate_full)
+dat_2018_sen2_cleaned$climate_full=as.factor(dat_2018_sen2_cleaned$climate_full)
 
-# plot NDVI vs time sepeately for each crop
-ggplot(soil_pro_grp2, aes(x = dates, y = NDVI, color = climate_full)) +
+# 2018 landsat dummy vars
+crop_type_natural=rep(NA,length(dat_2018_lan8_cleaned$crop_type))
+
+B11_idx=which(dat_2018_lan8_cleaned$crop_type=="B11")
+B13_idx=which(dat_2018_lan8_cleaned$crop_type=="B13")
+B16_idx=which(dat_2018_lan8_cleaned$crop_type=="B16")
+
+crop_type_natural[B11_idx]=rep("Wheat",length(B11_idx))
+crop_type_natural[B13_idx]=rep("Barley",length(B13_idx))
+crop_type_natural[B16_idx]=rep("Maize",length(B16_idx))
+
+dat_2018_lan8_cleaned$crop_type_natural=crop_type_natural
+
+# change climate zones into non abbv format
+# Create a named vector for mapping
+idx_BSk=which(dat_2018_lan8_cleaned$climate=="BSk")
+idx_Csa=which(dat_2018_lan8_cleaned$climate=="Csa")
+idx_Csb=which(dat_2018_lan8_cleaned$climate=="Csb")
+idx_Cfa=which(dat_2018_lan8_cleaned$climate=="Cfa")
+idx_Cfb=which(dat_2018_lan8_cleaned$climate=="Cfb")
+idx_Dfb=which(dat_2018_lan8_cleaned$climate=="Dfb")
+idx_Dfc=which(dat_2018_lan8_cleaned$climate=="Dfc")
+
+dat_2018_lan8_cleaned$climate_full=rep(NA,length(dat_2018_lan8_cleaned$climate))
+dat_2018_lan8_cleaned$climate_full[idx_BSk]="Bsk (Cold semi-arid climate)"
+dat_2018_lan8_cleaned$climate_full[idx_Csa]="Csa (Hot-summer Mediterranean climate)"
+dat_2018_lan8_cleaned$climate_full[idx_Csb]="Csb (Warm-summer Mediterranean climate)"
+dat_2018_lan8_cleaned$climate_full[idx_Cfa]="Cfa (Humid subtropical climate)"
+dat_2018_lan8_cleaned$climate_full[idx_Cfb]="Cfb (Temperate oceanic climate)"
+dat_2018_lan8_cleaned$climate_full[idx_Dfb]="Dfb (Warm-summer humid continental climate)"
+dat_2018_lan8_cleaned$climate_full[idx_Dfc]="Dfc (Subarctic climate)"
+
+dat_2018_lan8_cleaned$climate_full=as.factor(dat_2018_lan8_cleaned$climate_full)
+
+# 2015 landsat dummy vars
+crop_type_natural=rep(NA,length(dat_2015_lan8_cleaned$crop_type))
+
+B11_idx=which(dat_2015_lan8_cleaned$crop_type=="B11")
+B13_idx=which(dat_2015_lan8_cleaned$crop_type=="B13")
+B16_idx=which(dat_2015_lan8_cleaned$crop_type=="B16")
+
+crop_type_natural[B11_idx]=rep("Wheat",length(B11_idx))
+crop_type_natural[B13_idx]=rep("Barley",length(B13_idx))
+crop_type_natural[B16_idx]=rep("Maize",length(B16_idx))
+
+dat_2015_lan8_cleaned$crop_type_natural=crop_type_natural
+
+# change climate zones into non abbv format
+# Create a named vector for mapping
+idx_BSk=which(dat_2015_lan8_cleaned$climate=="BSk")
+idx_Csa=which(dat_2015_lan8_cleaned$climate=="Csa")
+idx_Csb=which(dat_2015_lan8_cleaned$climate=="Csb")
+idx_Cfa=which(dat_2015_lan8_cleaned$climate=="Cfa")
+idx_Cfb=which(dat_2015_lan8_cleaned$climate=="Cfb")
+idx_Dfb=which(dat_2015_lan8_cleaned$climate=="Dfb")
+idx_Dfc=which(dat_2015_lan8_cleaned$climate=="Dfc")
+
+dat_2015_lan8_cleaned$climate_full=rep(NA,length(dat_2015_lan8_cleaned$climate))
+dat_2015_lan8_cleaned$climate_full[idx_BSk]="Bsk (Cold semi-arid climate)"
+dat_2015_lan8_cleaned$climate_full[idx_Csa]="Csa (Hot-summer Mediterranean climate)"
+dat_2015_lan8_cleaned$climate_full[idx_Csb]="Csb (Warm-summer Mediterranean climate)"
+dat_2015_lan8_cleaned$climate_full[idx_Cfa]="Cfa (Humid subtropical climate)"
+dat_2015_lan8_cleaned$climate_full[idx_Cfb]="Cfb (Temperate oceanic climate)"
+dat_2015_lan8_cleaned$climate_full[idx_Dfb]="Dfb (Warm-summer humid continental climate)"
+dat_2015_lan8_cleaned$climate_full[idx_Dfc]="Dfc (Subarctic climate)"
+
+dat_2015_lan8_cleaned$climate_full=as.factor(dat_2015_lan8_cleaned$climate_full)
+
+
+
+# compare NDVI
+matching_indices=which(dat_2018_lan8_cleaned$ID %in% dat_2018_sen2_cleaned$ID)
+
+idx_list=c()
+match_entery=dat_2018_lan8_cleaned$ID[matching_indices]
+for (i in 1:length(match_entery)){
+  idx_list[i]=which(dat_2018_sen2_cleaned$ID==match_entery[i])
+}
+
+plot(dat_2018_sen2_cleaned$NDVI[idx_list],dat_2018_lan8_cleaned$NDVI[matching_indices])
+cor(dat_2018_sen2_cleaned$NDVI[idx_list],dat_2018_lan8_cleaned$NDVI[matching_indices])
+
+dat_2018_sen2_cleaned=na.omit(dat_2018_sen2_cleaned)
+dat_2018_sen2_cleaned=dat_2018_sen2_cleaned[-which(dat_2018_sen2_cleaned$EC>500),]
+
+
+##### Exploratory analysis ####
+library(ggplot2)
+library(corrplot)
+library(patchwork)
+
+# plot correlation of numerical features
+correlation_matrix <- cor((dat_2018_sen2_cleaned[,c(1:6,14:20)]),use = "complete.obs",method="pearson")
+corrplot(correlation_matrix)
+
+
+# plot NDVI vs dates with added trendline
+P1=ggplot(dat_2015_lan8_cleaned, aes(x = date, y = NDVI, color = climate_full)) +
   geom_point() +  # Scatter points
   geom_smooth(aes(group = 1), method = "lm", se = FALSE, color = "black") +  # Add single trend line across all crops
-  labs(title = "Time Series: NDVI for Different Crop Types", 
+  labs(title = "Time Series: NDVI for Different Crop Types 2015 Landsat 8", 
        x = "Dates", y = "NDVI", color = "Climate zones") +
   theme(plot.title = element_text(size = 16),
         axis.text = element_text(size = 12),
@@ -255,270 +472,486 @@ ggplot(soil_pro_grp2, aes(x = dates, y = NDVI, color = climate_full)) +
   facet_grid(crop_type_natural ~ ., scales = "free_y", switch = "y") +
   theme(strip.text.y = element_text(size = 12, colour = "black", angle = 90))
 
-# plot NDVI vs time for all crops
-ggplot(soil_pro_grp2, aes(x = dates)) +
-  geom_point(aes(y = NDVI)) +
-  labs(title = "Time series: NDVI measured for all crops", y = "NDVI") +
-  theme_minimal()
-
-# plot NDVI vs time sepeately for each crop
-ggplot(soil_pro_grp2, aes(x = dates, y = NDVI, color = climate)) +
-  geom_point() +
-  labs(title = "Time Series: NDVI for Different Crop Types", y = "NDVI", color = "Climate zones") +
-  labs(x = "Dates", y = "NDVI")+
+P2=ggplot(dat_2018_lan8_cleaned, aes(x = date, y = NDVI, color = climate_full)) +
+  geom_point() +  # Scatter points
+  geom_smooth(aes(group = 1), method = "lm", se = FALSE, color = "black") +  # Add single trend line across all crops
+  labs(title = "Time Series: NDVI for Different Crop Types 2018 Landsat 8", 
+       x = "Dates", y = "NDVI", color = "Climate zones") +
   theme(plot.title = element_text(size = 16),
-        axis.text=element_text(size=12),
+        axis.text = element_text(size = 12),
         axis.text.x = element_text(size = 14),
         axis.title.x = element_text(size = 14),
-        axis.title.y = element_text(size = 14))+
-  theme(legend.text = element_text(size=12))+
-  guides(colour = guide_legend(override.aes = list(size=5)))+
-  facet_grid(crop_type_natural ~ ., scales = "free_y", switch = "y")+
+        axis.title.y = element_text(size = 14)) +
+  theme(legend.text = element_text(size = 12)) +
+  guides(colour = guide_legend(override.aes = list(size = 5))) +
+  facet_grid(crop_type_natural ~ ., scales = "free_y", switch = "y") +
   theme(strip.text.y = element_text(size = 12, colour = "black", angle = 90))
 
+P3=ggplot(dat_2018_lan8_cleaned, aes(x = date, y = NDVI, color = climate_full)) +
+  geom_point() +  # Scatter points
+  geom_smooth(aes(group = 1), method = "lm", se = FALSE, color = "black") +  # Add single trend line across all crops
+  labs(title = "Time Series: NDVI for Different Crop Types 2018 Sentinel-2", 
+       x = "Dates", y = "NDVI", color = "Climate zones") +
+  theme(plot.title = element_text(size = 16),
+        axis.text = element_text(size = 12),
+        axis.text.x = element_text(size = 14),
+        axis.title.x = element_text(size = 14),
+        axis.title.y = element_text(size = 14)) +
+  theme(legend.text = element_text(size = 12)) +
+  guides(colour = guide_legend(override.aes = list(size = 5))) +
+  facet_grid(crop_type_natural ~ ., scales = "free_y", switch = "y") +
+  theme(strip.text.y = element_text(size = 12, colour = "black", angle = 90))
 
+P1 <- P1 + theme(legend.position = "none")
+P2 <- P2 + theme(legend.position = "none")
+P3 <- P3 + theme(legend.position = "none")
+
+combined_plot <- P1 + P2 + P3 +
+  plot_layout(ncol = 1, guides = "collect") +  # Stack plots in one column and collect legends
+  plot_annotation(
+    title = "Time Series: NDVI for Different Crop Types",
+    tag_levels = "A",  # Automatically tag subplots as (A), (B), (C)
+    theme = theme(plot.title = element_text(size = 18, hjust = 0.5))
+  ) &
+  theme(legend.position = "bottom")  # Set shared legend to bottom
+
+# Display the combined plot
+print(combined_plot)
+
+
+# other plots
 # climate vs NDVI
-ggplot(soil_pro_grp2, aes(x = as.factor(climate), y = NDVI)) +
+p1=ggplot(dat_2018_sen2_cleaned, aes(x = as.factor(climate_full), y = NDVI)) +
   geom_boxplot(fill = "blue") +
-  labs(title = "Boxplot of NDVI by Climate", x = "Climate", y = "NDVI") +
+  labs(title = "NDVI by Climate Sentinel-2, 2018", x = "Climate", y = "NDVI") +
   theme_minimal()
 
+p2=ggplot(dat_2018_lan8_cleaned, aes(x = as.factor(climate_full), y = NDVI)) +
+  geom_boxplot(fill = "blue") +
+  labs(title = "NDVI by Climate Landsat 8, 2018", x = "Climate", y = "NDVI") +
+  theme_minimal()
+
+p3=ggplot(dat_2015_lan8_cleaned, aes(x = as.factor(climate_full), y = NDVI)) +
+  geom_boxplot(fill = "blue") +
+  labs(title = "NDVI by Climate Landsat 8, 2015", x = "Climate", y = "NDVI") +
+  theme_minimal()
+
+combined_plot <- p1 + p2 + p3 +
+  plot_layout(ncol = 1, guides = "collect") +  # Stack plots in one column and collect legends
+  plot_annotation(
+    title = "NDVI by Climate",
+    tag_levels = "A",  # Automatically tag subplots as (A), (B), (C)
+    theme = theme(plot.title = element_text(size = 18, hjust = 0.5))
+  ) &
+  theme(legend.position = "bottom")  # Set shared legend to bottom
+
+# Display the combined plot
+print(combined_plot)
+
+# NDVI vs moisture
+p1=ggplot(dat_2018_sen2_cleaned, aes(x = soil_water_yearly, y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs yearly average soil moisture, Sentinel-2, 2018", x = expression(paste("Moisture (", m^{3}, ")")), y = "NDVI")# +
+
+p2=ggplot(dat_2018_lan8_cleaned, aes(x = soil_water_yearly, y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs yearly average soil moisture, Landsat 8, 2018", x = expression(paste("Moisture (", m^{3}, ")")), y = "NDVI")
+
+p3=ggplot(dat_2015_lan8_cleaned, aes(x = soil_water_yearly, y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs yearly average soil moisture, Landsat 8, 2015", x = expression(paste("Moisture (", m^{3}, ")")), y = "NDVI")
+
+combined_plot <- p1 + p2 + p3 +
+  plot_layout(ncol = 1, guides = "collect") +  # Stack plots in one column and collect legends
+  plot_annotation(
+    title = "NDVI vs yearly average soil moisture",
+    tag_levels = "A",  # Automatically tag subplots as (A), (B), (C)
+    theme = theme(plot.title = element_text(size = 18, hjust = 0.5))
+  ) &
+  theme(legend.position = "bottom")  # Set shared legend to bottom
+
+print(combined_plot)
+
+# NDVI vs soil temp
+p1=ggplot(dat_2018_sen2_cleaned, aes(x = soil_temp_yearly, y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs yearly average soil temperature, Sentinel-2, 2018", x = "Temperature (°K)", y = "NDVI")
+
+p2=ggplot(dat_2018_lan8_cleaned, aes(x = soil_temp_yearly, y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs yearly average soil temperature, Landsat 8, 2018", x = "Temperature (°K)", y = "NDVI")
+
+p3=ggplot(dat_2015_lan8_cleaned, aes(x = soil_temp_yearly, y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs yearly average soil temperature, Landsat 8, 2015", x = "Temperature (°K)", y = "NDVI")
+
+combined_plot <- p1 + p2 + p3 +
+  plot_layout(ncol = 1, guides = "collect") +  # Stack plots in one column and collect legends
+  plot_annotation(
+    title = "NDVI vs yearly average soil temperature",
+    tag_levels = "A",  # Automatically tag subplots as (A), (B), (C)
+    theme = theme(plot.title = element_text(size = 18, hjust = 0.5))
+  ) &
+  theme(legend.position = "bottom")  # Set shared legend to bottom
+
+print(combined_plot)
+
+# NDVI vs air temp
+p1=ggplot(dat_2018_sen2_cleaned, aes(x = air_temp_yearly, y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs yearly average air temperature, Sentinel 2, 2018", x = "Temperature (°K)", y = "NDVI")
+p2=ggplot(dat_2018_lan8_cleaned, aes(x = air_temp_yearly, y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs yearly average air temperature, Landsat 8, 2018", x = "Temperature (°K)", y = "NDVI")
+p3=ggplot(dat_2015_lan8_cleaned, aes(x = air_temp_yearly, y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs yearly average air temperature, Landsat 8, 2015", x = "Temperature (°K)", y = "NDVI")
+
+combined_plot <- p1 + p2 + p3 +
+  plot_layout(ncol = 1, guides = "collect") +  # Stack plots in one column and collect legends
+  plot_annotation(
+    title = "NDVI vs yearly average air temperature",
+    tag_levels = "A",  # Automatically tag subplots as (A), (B), (C)
+    theme = theme(plot.title = element_text(size = 18, hjust = 0.5))
+  ) &
+  theme(legend.position = "bottom")  # Set shared legend to bottom
+
+print(combined_plot)
+
+# NDVI vs one month prior moisture
+p1=ggplot(dat_2018_sen2_cleaned, aes(x = prev_soil_water, y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs one month prior soil moisture, Sentinel-2, 2018", x = expression(paste("Moisture (", m^{3}, ")")), y = "NDVI")
+
+p2=ggplot(dat_2018_lan8_cleaned, aes(x = prev_soil_water, y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs one month prior soil moisture, Landsat 8, 2018", x = expression(paste("Moisture (", m^{3}, ")")), y = "NDVI")
+
+p3=ggplot(dat_2015_lan8_cleaned, aes(x = prev_soil_water, y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs one month prior soil moisture, Landsat 8, 2015", x = expression(paste("Moisture (", m^{3}, ")")), y = "NDVI")
+
+combined_plot <- p1 + p2 + p3 +
+  plot_layout(ncol = 1, guides = "collect") +  # Stack plots in one column and collect legends
+  plot_annotation(
+    title = "NDVI vs one month prior soil moisture",
+    tag_levels = "A",  # Automatically tag subplots as (A), (B), (C)
+    theme = theme(plot.title = element_text(size = 18, hjust = 0.5))
+  ) &
+  theme(legend.position = "bottom")  # Set shared legend to bottom
+
+print(combined_plot)
+
+# NDVI vs one month prior soil temperature
+p1=ggplot(dat_2018_sen2_cleaned, aes(x = prev_soil_temp, y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs one month prior soil temperature, Sentinel-2, 2018", x = "Temperature (°K)", y = "NDVI")
+
+p2=ggplot(dat_2018_lan8_cleaned, aes(x = prev_soil_temp, y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs one month prior soil temperature, Landsat 8, 2018", x = "Temperature (°K)", y = "NDVI")
+
+p3=ggplot(dat_2015_lan8_cleaned, aes(x = prev_soil_temp, y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs one month prior soil temperature, Landsat 8, 2015", x = "Temperature (°K)", y = "NDVI")
+
+combined_plot <- p1 + p2 + p3 +
+  plot_layout(ncol = 1, guides = "collect") +  # Stack plots in one column and collect legends
+  plot_annotation(
+    title = "NDVI vs one month prior soil temperature",
+    tag_levels = "A",  # Automatically tag subplots as (A), (B), (C)
+    theme = theme(plot.title = element_text(size = 18, hjust = 0.5))
+  ) &
+  theme(legend.position = "bottom")  # Set shared legend to bottom
+
+print(combined_plot)
+
+# NVDI vs one month prior air temperature
+p1=ggplot(dat_2018_sen2_cleaned, aes(x = prev_air_temp, y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs one month prior air temperature, Sentinel-2, 2018", x = "Temperature (°K)", y = "NDVI")
+p2=ggplot(dat_2018_lan8_cleaned, aes(x = prev_air_temp, y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs one month prior air temperature, Landsat 8, 2018", x = "Temperature (°K)", y = "NDVI")
+p3=ggplot(dat_2015_lan8_cleaned, aes(x = prev_air_temp, y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs one month prior air temperature, Landsat 8, 2015", x = "Temperature (°K)", y = "NDVI")
+
+combined_plot <- p1 + p2 + p3 +
+  plot_layout(ncol = 1, guides = "collect") +  # Stack plots in one column and collect legends
+  plot_annotation(
+    title = "NDVI vs one month prior air temperature",
+    tag_levels = "A",  # Automatically tag subplots as (A), (B), (C)
+    theme = theme(plot.title = element_text(size = 18, hjust = 0.5))
+  ) &
+  theme(legend.position = "bottom")  # Set shared legend to bottom
+
+print(combined_plot)
+
+# NDVI vs EC
+p1=ggplot(dat_2018_sen2_cleaned[-733,], aes(x = log(EC), y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs electric conductivity, Sentinel-2, 2018", x = "Salinity (mS/m)", y = "NDVI")
+
+p2=ggplot(dat_2018_lan8_cleaned[-733,], aes(x = log(EC), y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs electric conductivity, Landsat 8, 2018", x = "Salinity (mS/m)", y = "NDVI")
+
+p3=ggplot(dat_2015_lan8_cleaned[-733,], aes(x = log(EC), y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs electric conductivity, Landsat 8, 2015", x = "Salinity (mS/m)", y = "NDVI")
+
+combined_plot <- p1 + p2 + p3 +
+  plot_layout(ncol = 1, guides = "collect") +  # Stack plots in one column and collect legends
+  plot_annotation(
+    title = "NDVI vs electric conductivity",
+    tag_levels = "A",  # Automatically tag subplots as (A), (B), (C)
+    theme = theme(plot.title = element_text(size = 18, hjust = 0.5))
+  ) &
+  theme(legend.position = "bottom")  # Set shared legend to bottom
+
+print(combined_plot)
+
+# NDVI OC
+p1=ggplot(dat_2018_sen2_cleaned, aes(x = log(OC), y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs Extractable Organic Carbon, Sentinel-2, 2018", x = "mass (g/kg)", y = "NDVI")
+p2=ggplot(dat_2018_lan8_cleaned, aes(x = log(OC), y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs Extractable Organic Carbon, Landsat 8, 2018", x = "mass (g/kg)", y = "NDVI")
+p3=ggplot(dat_2015_lan8_cleaned, aes(x = log(OC), y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs Extractable Organic Carbon, Landsat8, 2015", x = "mass (g/kg)", y = "NDVI")
+
+combined_plot <- p1 + p2 + p3 +
+  plot_layout(ncol = 1, guides = "collect") +  # Stack plots in one column and collect legends
+  plot_annotation(
+    title = "NDVI vs eExtractable Organic Carbon",
+    tag_levels = "A",  # Automatically tag subplots as (A), (B), (C)
+    theme = theme(plot.title = element_text(size = 18, hjust = 0.5))
+  ) &
+  theme(legend.position = "bottom")  # Set shared legend to bottom
+
+print(combined_plot)
+
+# NDVI vs P
+p1=ggplot(dat_2018_sen2_cleaned, aes(x = P, y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs Extractable Phosphorus, Sentinel-2, 2018", x = "mass (mg/kg)", y = "NDVI")
+p2=ggplot(dat_2018_lan8_cleaned, aes(x = P, y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs Extractable Phosphorus, Landsat 8, 2018", x = "mass (mg/kg)", y = "NDVI")
+p3=ggplot(dat_2015_lan8_cleaned, aes(x = P, y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs Extractable Phosphorus, Landsat 8, 2015", x = "mass (mg/kg)", y = "NDVI")
+
+combined_plot <- p1 + p2 + p3 +
+  plot_layout(ncol = 1, guides = "collect") +  # Stack plots in one column and collect legends
+  plot_annotation(
+    title = "NDVI vs Extractable Phosphorus",
+    tag_levels = "A",  # Automatically tag subplots as (A), (B), (C)
+    theme = theme(plot.title = element_text(size = 18, hjust = 0.5))
+  ) &
+  theme(legend.position = "bottom")  # Set shared legend to bottom
+
+print(combined_plot)
+
+
+# NDVI CaCL2
+p1=ggplot(dat_2018_sen2_cleaned, aes(x = CaCl2, y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs CaCl2, Sentinel-2, 2018", x = "pH", y = "NDVI")
+p2=ggplot(dat_2018_lan8_cleaned, aes(x = CaCl2, y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs CaCl2, Landsat 8, 2018", x = "pH", y = "NDVI")
+p3=ggplot(dat_2015_lan8_cleaned, aes(x = CaCl2, y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs CaCl2, Landsat 8, 2015", x = "pH", y = "NDVI")
+
+combined_plot <- p1 + p2 + p3 +
+  plot_layout(ncol = 1, guides = "collect") +  # Stack plots in one column and collect legends
+  plot_annotation(
+    title = "NDVI vs CaCl2",
+    tag_levels = "A",  # Automatically tag subplots as (A), (B), (C)
+    theme = theme(plot.title = element_text(size = 18, hjust = 0.5))
+  ) &
+  theme(legend.position = "bottom")  # Set shared legend to bottom
+
+print(combined_plot)
+
+# NDVI vs K
+p1=ggplot(dat_2018_sen2_cleaned, aes(x = log(K), y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs Extractable Potassium, Sentinel-2, 2018", x = "mass (g/kg)", y = "NDVI")
+p2=ggplot(dat_2018_lan8_cleaned, aes(x = log(K), y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs Extractable Potassium, Landsat 8, 2018", x = "mass (g/kg)", y = "NDVI")
+p3=ggplot(dat_2015_lan8_cleaned, aes(x = log(K), y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs Extractable Potassium, Landsat 8, 2015", x = "mass (g/kg)", y = "NDVI")
+
+combined_plot <- p1 + p2 + p3 +
+  plot_layout(ncol = 1, guides = "collect") +  # Stack plots in one column and collect legends
+  plot_annotation(
+    title = "NDVI vs Extractable Potassium",
+    tag_levels = "A",  # Automatically tag subplots as (A), (B), (C)
+    theme = theme(plot.title = element_text(size = 18, hjust = 0.5))
+  ) &
+  theme(legend.position = "bottom")  # Set shared legend to bottom
+
+print(combined_plot)
+
+# NDVI vs N
+p1=ggplot(dat_2018_sen2_cleaned, aes(x = log(N), y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs Extractable Nitrogen, Sentinel-2, 2018", x = "mass (g/kg)", y = "NDVI")
+p2=ggplot(dat_2018_lan8_cleaned, aes(x = log(N), y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs Extractable Nitrogen, Landsat 8, 2018", x = "mass (g/kg)", y = "NDVI")
+p3=ggplot(dat_2015_lan8_cleaned, aes(x = log(N), y = NDVI)) +
+  geom_point() +
+  labs(title = "NDVI vs Extractable Nitrogen, Landsat 8, 2015", x = "mass (g/kg)", y = "NDVI")
+
+combined_plot <- p1 + p2 + p3 +
+  plot_layout(ncol = 1, guides = "collect") +  # Stack plots in one column and collect legends
+  plot_annotation(
+    title = "NDVI vs Extractable Nitrogen",
+    tag_levels = "A",  # Automatically tag subplots as (A), (B), (C)
+    theme = theme(plot.title = element_text(size = 18, hjust = 0.5))
+  ) &
+  theme(legend.position = "bottom")  # Set shared legend to bottom
+
+print(combined_plot)
+
 # crop type vs NDVI
-ggplot(soil_pro_grp2, aes(x = as.factor(crop_type), y = NDVI)) +
+ggplot(dat_2018_sen2_cleaned, aes(x = as.factor(crop_type), y = NDVI)) +
   geom_boxplot(fill = "blue") +
   labs(title = "Boxplot of NDVI by Crop type", x = "Crop_type", y = "NDVI") +
   theme_minimal()
 
-# crop vs month
-ggplot(soil_pro_grp2, aes(x = as.factor(season), y = NDVI, fill = crop_type)) +
+# NDVI vs crop and month
+p1=ggplot(dat_2018_sen2_cleaned, aes(x = as.factor(season), y = NDVI, fill = crop_type_natural)) +
   geom_boxplot() +
-  labs(title = "Boxplot of NDVI by month and crop type", x = "Season", y = "NDVI") +
-  theme_minimal() +
-  facet_wrap(~ as.factor(crop_type), scales = "free_y")
+  scale_fill_discrete(name = "Crop Type") +
+  labs(title = "NDVI relation by Season and Crop Type, Sentinel-2, 2018", x = "Season", y = "NDVI") +
+  #theme_minimal() +
+  facet_wrap(~ as.factor(crop_type_natural), scales = "free_y")
+
+p2=ggplot(dat_2018_lan8_cleaned, aes(x = as.factor(season), y = NDVI, fill = crop_type_natural)) +
+  geom_boxplot() +
+  scale_fill_discrete(name = "Crop Type") +
+  labs(title = "NDVI relation by Season and Crop Type, Landsat 8, 2018", x = "Season", y = "NDVI") +
+  #theme_minimal() +
+  facet_wrap(~ as.factor(crop_type_natural), scales = "free_y")
+
+p3=ggplot(dat_2015_lan8_cleaned, aes(x = as.factor(season), y = NDVI, fill = crop_type_natural)) +
+  geom_boxplot() +
+  scale_fill_discrete(name = "Crop Type") +
+  labs(title = "NDVI relation by Season and Crop Type, Landsat 8, 2015", x = "Season", y = "NDVI") +
+  #theme_minimal() +
+  facet_wrap(~ as.factor(crop_type_natural), scales = "free_y")
+
+combined_plot <- p1 + p2 + p3 +
+  plot_layout(ncol = 1, guides = "collect") +  # Stack plots in one column and collect legends
+  plot_annotation(
+    title = "NDVI relation by Season and Crop Type",
+    tag_levels = "A",  # Automatically tag subplots as (A), (B), (C)
+    theme = theme(plot.title = element_text(size = 18, hjust = 0.5))
+  ) &
+  theme(legend.position = "bottom")  # Set shared legend to bottom
+
+print(combined_plot)
+
 
 # climate vs crop type
-ggplot(soil_pro_grp2, aes(x = climate, y = NDVI, fill = crop_type)) +
+p1=ggplot(dat_2018_sen2_cleaned, aes(x = climate, y = NDVI, fill = crop_type_natural)) +
   geom_boxplot() +
-  labs(title = "Boxplot of NDVI by climate and crop type", x = "Climate", y = "NDVI") +
-  theme_minimal() +
-  facet_wrap(~ as.factor(crop_type), scales = "free_y")
+  labs(title = "NDVI relation by Climate zones and Crop type, Sentinel-2, 2018 ", x = "Climate", y = "NDVI") +
+  scale_fill_discrete(name = "Crop Type") +
+  #theme_minimal() +
+  facet_wrap(~ as.factor(crop_type_natural), scales = "free_y")
+p2=ggplot(dat_2018_lan8_cleaned, aes(x = climate, y = NDVI, fill = crop_type_natural)) +
+  geom_boxplot() +
+  labs(title = "NDVI relation by Climate zones and Crop type, Landsat 8, 2018 ", x = "Climate", y = "NDVI") +
+  scale_fill_discrete(name = "Crop Type") +
+  #theme_minimal() +
+  facet_wrap(~ as.factor(crop_type_natural), scales = "free_y")
+p3=ggplot(dat_2015_lan8_cleaned, aes(x = climate, y = NDVI, fill = crop_type_natural)) +
+  geom_boxplot() +
+  labs(title = "NDVI relation by Climate zones and Crop type, Landsat 8, 2015 ", x = "Climate", y = "NDVI") +
+  scale_fill_discrete(name = "Crop Type") +
+  #theme_minimal() +
+  facet_wrap(~ as.factor(crop_type_natural), scales = "free_y")
+
+combined_plot <- p1 + p2 + p3 +
+  plot_layout(ncol = 1, guides = "collect") +  # Stack plots in one column and collect legends
+  plot_annotation(
+    title = "NDVI relation by Climate zones and Crop type",
+    tag_levels = "A",  # Automatically tag subplots as (A), (B), (C)
+    theme = theme(plot.title = element_text(size = 18, hjust = 0.5))
+  ) &
+  theme(legend.position = "bottom")  # Set shared legend to bottom
+
+print(combined_plot)
+
+
+# crop vs soil type
+p1=ggplot(na.omit(dat_2018_sen2_cleaned), aes(x = as.factor(soil_type), y = NDVI, fill = crop_type_natural)) +
+  geom_boxplot() +
+  labs(title = "NDVI relation by Soil and Crop Type, Sentinel-2, 2018", x = "Soil type", y = "NDVI") +
+  scale_fill_discrete(name = "Crop Type") +
+  #theme_minimal() +
+  facet_wrap(~ as.factor(crop_type_natural), scales = "free_y")
+
+p2=ggplot(na.omit(dat_2018_lan8_cleaned), aes(x = as.factor(soil_type), y = NDVI, fill = crop_type_natural)) +
+  geom_boxplot() +
+  labs(title = "NDVI relation by Soil and Crop Type, Landsat 8, 2018", x = "Soil type", y = "NDVI") +
+  scale_fill_discrete(name = "Crop Type") +
+  #theme_minimal() +
+  facet_wrap(~ as.factor(crop_type_natural), scales = "free_y")
+
+p3=ggplot(dat_2015_lan8_cleaned, aes(x = as.factor(soil_type), y = NDVI, fill = crop_type_natural)) +
+  geom_boxplot() +
+  labs(title = "NDVI relation by Soil and Crop Type, Landsat 8, 2015", x = "Soil type", y = "NDVI") +
+  scale_fill_discrete(name = "Crop Type") +
+  #theme_minimal() +
+  facet_wrap(~ as.factor(crop_type_natural), scales = "free_y")
+
+combined_plot <- p1 + p2 + p3 +
+  plot_layout(ncol = 1, guides = "collect") +  # Stack plots in one column and collect legends
+  plot_annotation(
+    title = "NDVI relation by Soil and Crop Type",
+    tag_levels = "A",  # Automatically tag subplots as (A), (B), (C)
+    theme = theme(plot.title = element_text(size = 18, hjust = 0.5))
+  ) &
+  theme(legend.position = "bottom")  # Set shared legend to bottom
+
+print(combined_plot)
 
 #### view how the NDVI values are clustering when not correcting for any variables ####
-# read in the soil microbiome data (binary matrix)
+dat=na.omit(dat_2018_lan8_cleaned)
+# read in the soil microbiome data (count data matrix)
 tax_meta_soil_combo <- read_csv("~/Desktop/soil data analysis/meta_soil.csv")
 
 # subset the matrix to the targeted crops
-crop_type_idx=which(tax_meta_soil_combo$LC1_2018 %in% c("B11","B13","B16"))#,)) # "B11","B13", "B16","B31","B32","B81","B82"
+crop_type_idx=which(tax_meta_soil_combo$LC1_2018 %in% c("B11","B13","B16"))
 tax_meta_soil_combo=tax_meta_soil_combo[crop_type_idx,]
 
 # find the missing points
-length(which(tax_meta_soil_combo$LUCAS_ID %in% dat$Point_id)) # from 237 down to 190 - 
-length(which(tax_meta_soil_combo$LUCAS_ID %in% soil_pro_grp2$ID)) # from 190 down to 175 (samples lost in winter months) down to 96 without atum
-
+length(which(tax_meta_soil_combo$LUCAS_ID %in% dat$ID)) #
 
 # set the taxon data to only include sample from which the NDVI values are availability 
-idx_NDVI=which(tax_meta_soil_combo$LUCAS_ID %in% soil_pro_grp2$ID)
-idx_barcode=which(soil_pro_grp2$ID %in%  tax_meta_soil_combo$LUCAS_ID)
+idx_NDVI=which(tax_meta_soil_combo$LUCAS_ID %in% dat$ID)
+idx_barcode=which(dat$ID %in%  tax_meta_soil_combo$LUCAS_ID)
 
-dat=soil_pro_grp2
 # subset of bio-data where NDVI values are present 
 bio_subset=dat[idx_barcode,]
 bio_subset$barcode_id=tax_meta_soil_combo$BARCODE_ID[idx_NDVI]
 
-#### make NDVI correction model ####
 
-# linear modelling
-library(car)
-# remove variables that contain  many NA values
-soil_pro_grp2$CaCO3=NULL
-soil_pro_grp2$Ox_Al=NULL
-soil_pro_grp2$Ox_Fe=NULL
-soil_pro_grp2$pH2O=NULL
-
-# remove all nan values
-result=na.omit(soil_pro_grp2) # remove nan
-
-# remove high outliers
-rm_idx=which(result$EC>500)
-result=result[-rm_idx,] 
-
-# how many biosamples left
-length(which(bio_subset$ID%in% result$ID)) # from 175 down to 143 
-
-# split data into train and test
-library(caret)
-library(Metrics)
-
-set.seed(15)
-trainIndex <- createDataPartition(result$NDVI, p = 0.8, list = FALSE)
-
-# Create training and testing datasets
-train_dat <- result[trainIndex, ]
-test_dat <- result[-trainIndex, ]
-
-
-# make simple model 
-model_lm <- lm(NDVI~.-crop_type_natural-climate_full-ID-dates-month+season-OC-N+log(N)-EC+log(EC)-soil_water_all-soil_temp_all-air_temp_all-prev_air_temp  , data = train_dat)
-#crPlots(model_lm)
-#plot(model_lm)
-summary(model_lm)
-# view model status
-Anova(model_lm,type="III")
-
-
-# expand the model
-model_lm=update(model_lm,~(.)^2,data=train_dat)
-summary(model_lm)
-
-model_lm2=update(model_lm,~.-climate:log(N)-crop_type:log(N)-prev_soil_water:log(EC)-CaCl2:prev_soil_water-soil_type:log(EC)-soil_type:log(N)-CaCl2:log(N)-log(N):log(EC)-climate:season-K:crop_type-P:log(N)-K:log(N)-prev_soil_temp:climate-season:log(EC)-P:crop_type-prev_soil_water:crop_type-CaCl2:climate-prev_soil_water:climate-P:season-P:K-K:season -CaCl2:season-prev_soil_temp:log(EC)-K:log(EC)-CaCl2:P-prev_soil_water:log(N)-K:soil_type-CaCl2:log(EC)-prev_soil_water:soil_type-K:prev_soil_water-prev_soil_water:season-K:prev_soil_temp-CaCl2:K-prev_soil_temp:soil_type-P:prev_soil_water-season:log(N)-P:soil_type-CaCl2:soil_type-P:log(EC)-prev_soil_temp:log(N),data=train_dat)
-
-# remove terms 
-ss=drop1(model_lm2,test = "Chi")
-var_to_remove <- rownames(ss)[which.max(ss$`Pr(>Chi)`)]
-print(var_to_remove)
-print(ss)
-
-anova(model_lm2)
-par(mfrow=c(1,2))
-plot(model_lm,which = c(1,2))
-mtext("Model Diagnostics", side = 3, line = - 2, outer = TRUE)
-
-# test set preds
-lm_pred_test=predict(model_lm2,test_dat)
-rmse(lm_pred_test,test_dat$NDVI)
-
-# extract MSE and R^2
-summary(model_lm2)
-
-
-# RF model
-library(randomForest)
-library(ranger)
-
-param_grid=expand.grid(mtry = c(1:10),
-                       splitrule = c( "variance"),
-                       min.node.size = c(1, 5, 10, 15))
-cv_scheme <- trainControl(method = "cv",
-                          number = 5,
-                          verboseIter = FALSE)
-x=train_dat[,-1]
-y=train_dat[,1]
-
-x$ID=NULL
-x$dates=NULL
-x$month=NULL
-
-models=list()
-for (ntree in c(10,100,200,400,800)){
-  set.seed(15)
-  rf_model <- train(y=y,
-                    x=x,
-                    method = "ranger",
-                    trControl = cv_scheme,
-                    tuneGrid = param_grid,
-                    num.trees=ntree)
-  name=paste0(ntree,"_tr_model")
-  models[[name]]=rf_model
-}
-
-models$"10_tr_model"$bestTune
-models$"100_tr_model"$bestTune
-models$"200_tr_model"$bestTune
-models$"400_tr_model"$bestTune
-models$"800_tr_model"$bestTune
-
-models$"10_tr_model"$results$RMSE
-models$"10_tr_model"$results$mtry
-models$"10_tr_model"$results$min.node.size
-
-ggplot(models$"10_tr_model")+ggtitle("Random forest model tunning results Ntrees=10")
-ggplot(models$"100_tr_model")+ggtitle("Random forest model tunning results Ntrees=100")
-ggplot(models$"200_tr_model")+ggtitle("Random forest model tunning results Ntrees=200")
-ggplot(models$"400_tr_model")+ggtitle("Random forest model tunning results Ntrees=400")
-ggplot(models$"800_tr_model")+ggtitle("Random forest model tunning results Ntrees=800")
-
-# insert best model here 
-model_RF=randomForest(NDVI~.-climate_full-crop_type_natural-dates-ID+season-month,data=train_dat,ntree=800,nodesize=15,mtry=9,importance=TRUE)
-RF_test_pred=predict(model_RF,test_dat)
-
-rmse(RF_test_pred,test_dat$NDVI) # test data eval
-1-rmse(RF_test_pred,test_dat$NDVI)^2/var(test_dat$NDVI)
-
-# RF model with all data
-set.seed(15)
-model_lm2=randomForest(NDVI~.-climate_full-crop_type_natural-dates-ID+season-month,data=result,ntree=800,nodesize=15,mtry=9,importance=TRUE)
-
-# varible importance plot
-V=varImp(model_lm2,scale=TRUE)
-ggplot2::ggplot(V, aes(x=reorder(rownames(V),Overall), y=Overall)) +
-  geom_point( color="blue", size=4, alpha=0.6)+
-  geom_segment( aes(x=rownames(V), xend=rownames(V), y=0, yend=Overall), 
-                color='skyblue') +
-  ggtitle("Varible Importance plot")+
-  xlab('Variable')+
-  ylab('%IncMSE')+
-  coord_flip() +
-  theme(plot.title = element_text(size = 16),
-        axis.text=element_text(size=12),
-        axis.text.x = element_text(size = 14),
-        axis.title.x = element_text(size = 14),
-        axis.title.y = element_text(size = 14))
-
-# extract RF model R^2 and RMSE - results may differ from a little from time to time (RF is stochastic)
-model_lm2 # find R^2 here
-rmse(predict(model_lm2,result),result$NDVI) # rmse full data
-
-
-# get nice residual plots
-# Predict fitted values
-fitted_values <- predict(model_lm2,newdata = result)
-
-# Calculate residuals
-residuals <- result$NDVI - fitted_values
-
-# Add fitted values and residuals to the dataset
-result1=result
-result1$fitted <- fitted_values
-result1$residuals <- residuals
-
-
-library(ggplot2)
-for (var in names(result1)) {
-  if (is.factor(result1[[var]]) || is.character(result1[[var]])) {  # Check if the variable is categorical
-    p <- ggplot(result1, aes_string(x = var, y = "residuals")) +
-      geom_boxplot(alpha = 0.6) +  # Use boxplot for categorical predictors
-      geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
-      labs(title = paste("Residuals vs", var), x = var, y = "Residuals")
-    print(p)
-    #pp[[var]] <- p  # Store the plot in the list
-  }
-}
-
-# remove influence of non-mcrio biome predictors
-preds_all=data.frame(NDVI_pred=predict(model_lm2,newdata = result))
-
-pred_res_all=cbind(result,preds_all)
-
-cor_NDVI=na.omit(result$NDVI)-preds_all$NDVI_pred
-
-new_result=cbind(cor_NDVI,result)
-
-# Create the scatter plot
-ggplot(pred_res_all, aes(x = NDVI_pred, y = NDVI)) +
-  geom_point() +
-  # Add labels and customize the plot
-  labs(x = "Predicted NDVI", y = "Observed NDVI", title = "Observed NDVI vs. Predicted NDVI")+
-  theme(plot.title = element_text(size = 16),
-        axis.text=element_text(size=12),
-        axis.text.x = element_text(size = 14),
-        axis.title.x = element_text(size = 14),
-        axis.title.y = element_text(size = 14))
-
-##### link the corrected NDVI to the OTU clusters #### 
+# results from cluster analysis prior to abiotic correction of NDVI
 cluster_relation_count_Hclust <- read_csv("~/Desktop/soil data analysis/bio_data/count_hierchical_result_cut1_3crops_grain_new_method.csv") # 3 crops
-
 bar_code_temp=cluster_relation_count_Hclust$...1
-cluster_temp=cluster_relation_count_Hclust $x
 
 idx_match=which(bar_code_temp %in% bio_subset$barcode_id)
 
@@ -532,18 +965,507 @@ bio_subset_hc_count$cluster=cluster_relation_count_Hclust$x
 boxplot(NDVI ~ cluster, data = bio_subset_hc_count, main = "Boxplot of uncorrected NDVI by Cluster", xlab = "Cluster", ylab = "uncorrected NDVI")
 summary(aov(NDVI~as.factor(cluster),data=bio_subset_hc_count))
 
+# fancy plot (run above agian with different dataset as dat to get results)
+p1=ggplot(data = bio_subset_hc_count, aes(x = factor(cluster), y = NDVI, fill = factor(cluster))) +
+  geom_boxplot() +
+  labs(title = "Boxplot of raw NDVI by Cluster, Sentinel 2, 2018",
+       x = "Cluster",
+       y = "NDVI",
+       color = "Cluster")+
+  scale_fill_manual(values = c("blue", "orange","red"),name="Cluster")+
+  theme(plot.title = element_text(size = 18),
+        axis.text=element_text(size=14),
+        axis.text.x = element_text(size = 16),
+        axis.title.x = element_text(size = 16),
+        axis.title.y = element_text(size = 16),
+        legend.text = element_text(size = 14),    # Adjust legend text size
+        legend.title = element_text(size = 16))
+
+p2=ggplot(data = bio_subset_hc_count, aes(x = factor(cluster), y = NDVI, fill = factor(cluster))) +
+  geom_boxplot() +
+  labs(title = "Boxplot of raw NDVI by Cluster, Landsat 8, 2018",
+       x = "Cluster",
+       y = "NDVI",
+       color = "Cluster")+
+  scale_fill_manual(values = c("blue", "orange","red"),name="Cluster")+
+  theme(plot.title = element_text(size = 18),
+        axis.text=element_text(size=14),
+        axis.text.x = element_text(size = 16),
+        axis.title.x = element_text(size = 16),
+        axis.title.y = element_text(size = 16),
+        legend.text = element_text(size = 14),    # Adjust legend text size
+        legend.title = element_text(size = 16))   # Adjust legend title size)
+
+combined_plot <- p1 + p2 +
+  plot_layout(ncol = 2, guides = "collect") +  # Stack plots in one column and collect legends
+  plot_annotation(
+    title = "Raw NDVI by Cluster for Sentinel-2 and Landsat 8",
+    tag_levels = "A",  # Automatically tag subplots as (A), (B), (C)
+    theme = theme(plot.title = element_text(size = 20, hjust = 0.5))
+  ) &
+  theme(legend.position = "bottom")  # Set shared legend to bottom
+
+print(combined_plot)
+
+#### modelling the data ####
+
+# split data into train and test
+library(caret)
+library(car)
+# remove dummy variables
+dat$climate_full=NULL
+dat$crop_type_natural=NULL
+
+# data with within 1 year 
+set.seed(123)
+trainIndex <- createDataPartition(dat$NDVI, p = 0.8, list = FALSE)
+
+# Create training and testing datasets
+train_dat <- dat[trainIndex, ]
+test_dat <- dat[-trainIndex, ]
+
+# data with two years (2015 and 2018) landsat 8
+train_dat1=na.omit(dat_2018_lan8_cleaned)
+test_dat1=na.omit(dat_2015_lan8_cleaned)
+
+# train data = 2015, test data=2018
+test_dat3=na.omit(dat_2018_lan8_cleaned)
+train_dat3=na.omit(dat_2015_lan8_cleaned)
+
+# data with mixed years
+dat_2015_lan8_cleaned$year=rep("2015",length(dat_2015_lan8_cleaned$N))
+dat_2018_lan8_cleaned$year=rep("2018",length(dat_2018_lan8_cleaned$N))
+
+dat1=rbind(dat_2015_lan8_cleaned,dat_2018_lan8_cleaned)
+dat1=na.omit(dat1)
+dat1$year=as.factor(dat1$year)
+
+#dup_idx=which(duplicated(dat1$ID)==TRUE)
+#idx_rm=which(dat1[dup_idx,]$year=="2015")
+#dat1=dat1[-idx_rm,]
+
+
+set.seed(123)
+trainIndex <- createDataPartition(dat1$NDVI, p = 0.8, list = FALSE)
+
+# Create training and testing datasets
+train_dat2 <- dat1[trainIndex, ]
+test_dat2 <- dat1[-trainIndex, ]
+
+
+train_dat3$year=NULL
+test_dat3$year=NULL
+# make simple model -year
+model_lm <-lm(NDVI~ .-climate_full-crop_type_natural-ID-date-month+log(OC)-OC-N+log(N)-EC+log(EC),data=train_dat3)
+summary(model_lm)
+# view model status
+Anova(model_lm,type="III")
+
+# make two factor interaction model
+model_lm=update(model_lm,~(.)^2,data=train_dat3)
+summary(model_lm)
+
+# Initial model
+model_lm2 <- model_lm  # Assuming model_lm is your initial model
+
+# Set a significance threshold
+significance_level <- 0.05
+
+# Function to safely remove terms from a formula
+remove_term_from_formula <- function(formula, term_to_remove) {
+  # Convert the formula to a character string
+  formula_str <- paste(deparse(formula), collapse = " ")
+  # Escape special characters in the term to remove
+  term_to_remove_escaped <- gsub("([\\(\\)\\:])", "\\\\\\1", term_to_remove)
+  # Use regex to remove the term
+  updated_formula_str <- gsub(
+    paste0("(^|\\+|\\s)", term_to_remove_escaped, "(\\+|$|\\s)"), 
+    " ", 
+    formula_str
+  )
+  # Convert the updated string back to a formula
+  as.formula(updated_formula_str)
+}
+
+# Iterative term removal process (it takes a while!)
+while (TRUE) {
+  # Perform the drop1 test
+  ss <- drop1(model_lm2, test = "Chi")
+  
+  # Exclude the `<none>` term
+  ss <- ss[rownames(ss) != "<none>", ]
+  
+  # Get the p-values for the terms
+  p_values <- ss$`Pr(>Chi)`
+  
+  # Remove NA entries (e.g., intercepts or untested terms)
+  p_values <- p_values[!is.na(p_values)]
+  
+  # Check if any terms are above the significance threshold
+  if (length(p_values) == 0 || all(p_values <= significance_level)) {
+    # Break the loop if no terms are above the threshold
+    break
+  }
+  
+  # Find the term with the highest p-value
+  var_to_remove <- rownames(ss)[which.max(p_values)]
+  
+  # Print the term to be removed
+  print(paste("Removing variable:", var_to_remove))
+  
+  # Update the formula by removing the non-significant term
+  current_formula <- formula(model_lm2)
+  updated_formula <- remove_term_from_formula(current_formula, var_to_remove)
+  
+  # Update the model with the new formula
+  model_lm2 <- update(model_lm2, updated_formula)
+}
+
+# getting weird error - removing manually from here!
+
+# sentinel 2 model results within 1 year test and train (2018)
+#model_lm3=update(model_lm2,~.-season:soil_temp_yearly-soil_type:prev_soil_temp-CaCl2-crop_type:CaCl2-climate:soil_water_yearly-K:log(OC)-season:prev_soil_temp-soil_temp_yearly:soil_water_yearly-P:climate -climate:crop_type-season:log(EC)-P:soil_temp_yearly-air_temp_yearly:log(OC)-log(N)-P:soil_water_yearly-crop_type:soil_water_yearly-soil_water_yearly:air_temp_yearly-K:crop_type-P:log(N)-P:log(OC)-soil_type:prev_soil_water-climate:log(EC)-CaCl2:soil_temp_yearly-CaCl2:air_temp_yearly-soil_water_yearly:log(EC)-prev_soil_water:log(EC)-CaCl2:prev_air_temp-CaCl2:prev_soil_temp-P:prev_air_temp-P:air_temp_yearly  -prev_air_temp:air_temp_yearly-prev_air_temp:soil_temp_yearly-prev_air_temp:log(OC)-crop_type:log(OC)-season:air_temp_yearly-season:prev_soil_water-prev_soil_water:soil_temp_yearly-season:soil_water_yearly-climate:soil_temp_yearly-P:crop_type-soil_temp_yearly:log(N)-air_temp_yearly:log(N)-P:season-CaCl2:log(OC)-CaCl2:log(N)-prev_soil_water:air_temp_yearly-prev_soil_temp:log(OC)-soil_type:prev_air_temp-season:log(N)-season:log(OC)-soil_type:log(N)-soil_type:log(OC)-log(OC):log(N)-prev_soil_temp:soil_temp_yearly-prev_soil_temp:air_temp_yearly-P:prev_soil_water-soil_type:log(EC)-season:soil_type-crop_type:soil_type-K:P-K:soil_water_yearly-prev_soil_water:log(N)-prev_soil_temp:log(N)-prev_air_temp:log(N)-log(N):log(EC),data=train_dat)
+
+# landsat 8 model results within 1 year test and train results (2018)
+#model_lm3=update(model_lm2,~.-CaCl2:soil_water_yearly-season:air_temp_yearly-prev_soil_water:log(N)-P:soil_water_yearly-season:prev_air_temp-P:soil_temp_yearly-air_temp_yearly:prev_air_temp-soil_type:prev_soil_temp-crop_type:soil_water_yearly-crop_type:soil_temp_yearly-climate:crop_type-soil_type:soil_temp_yearly-CaCl2:air_temp_yearly-crop_type:log(N)-K:P-K:crop_type-P:crop_type-P:log(EC)-crop_type:log(EC)-P:prev_air_temp-P:prev_soil_temp-climate:log(EC)-soil_type:log(N)-log(OC):log(N)-K:climate-soil_water_yearly:prev_soil_temp-soil_water_yearly:prev_soil_water-soil_temp_yearly:prev_soil_temp-air_temp_yearly:log(EC)-climate:season-prev_soil_temp:log(EC)-soil_type:log(OC)-P:climate-climate:log(N)-prev_air_temp:log(EC)-climate:log(OC)-prev_soil_water:log(OC)-soil_water_yearly:log(OC)-soil_water_yearly:log(N)-P:air_temp_yearly-P:soil_type-K:soil_type-crop_type:soil_type-crop_type:prev_soil_water-crop_type:prev_soil_temp-season:prev_soil_water-prev_air_temp:prev_soil_temp-K:soil_water_yearly-soil_temp_yearly:prev_soil_water-air_temp_yearly:prev_soil_water-prev_air_temp:prev_soil_water-K:log(EC)-soil_type:log(EC)-prev_soil_water:log(EC)-CaCl2:prev_soil_water-K:log(N)-P:log(N)-CaCl2:log(N)-P:log(OC)-CaCl2:log(OC)-K:log(OC)-soil_water_yearly:air_temp_yearly-climate:soil_water_yearly-soil_type:air_temp_yearly-season:log(EC)-air_temp_yearly:prev_soil_temp-air_temp_yearly:log(OC)-season:log(N)-season:log(OC)-season:CaCl2-log(N):log(EC),data=train_dat)
+
+# landsat 8 model results with two seperate years for test and train set (2015,2018) results (2015= test set, 2018=train set)
+#model_lm3=update(model_lm2,~.-season:air_temp_yearly -air_temp_yearly:prev_air_temp-crop_type:soil_temp_yearly -climate:crop_type-soil_type:prev_air_temp  -soil_type:air_temp_yearly-CaCl2:air_temp_yearly-K:crop_type-crop_type:log(EC)-K:P-P:log(EC)-prev_soil_water:log(OC)-K:soil_water_yearly-P:soil_water_yearly-climate:log(EC)-CaCl2:soil_water_yearly-air_temp_yearly:log(EC)-K:soil_type-soil_type:log(EC)-soil_type:log(N)-crop_type:CaCl2-prev_air_temp:log(EC)-climate:season-season:prev_soil_water-K:climate-crop_type:soil_type-season:log(N)-log(N):log(EC)-P:log(N),data=train_dat1)
+
+# landsat 8 model results with two seperate years for test and train set (2015,2018) results (2015= test set, 2018=train set)
+model_lm3=update(model_lm2,~.-K:season-K:air_temp_yearly-K:prev_soil_temp-crop_type:prev_air_temp-climate:soil_temp_yearly-climate:prev_soil_water-K:prev_air_temp-K:prev_soil_water-P:prev_soil_temp-P:soil_water_yearly-P:prev_air_temp-climate:log(EC)-prev_soil_temp:log(OC)-prev_air_temp:log(OC)-soil_temp_yearly:log(OC)-air_temp_yearly:log(OC)-soil_temp_yearly:log(EC)-prev_soil_temp:log(EC)-prev_air_temp:log(EC)-air_temp_yearly:log(EC)-crop_type:air_temp_yearly-CaCl2:soil_water_yearly-CaCl2:soil_temp_yearly-CaCl2:air_temp_yearly-prev_soil_temp:log(N)-season:log(N)-season:log(OC)-soil_type:prev_soil_water-soil_type:soil_temp_yearly-CaCl2:prev_soil_water-season:log(EC)-soil_type:log(EC)-P:soil_type-soil_water_yearly:log(EC)-prev_soil_water:log(EC)-prev_soil_water:log(OC)-soil_temp_yearly:prev_soil_temp-air_temp_yearly:prev_soil_temp-P:air_temp_yearly-P:crop_type-soil_water_yearly:log(OC)-soil_type:CaCl2-CaCl2:log(OC)-P:log(N)-K:P-prev_air_temp:log(N)-CaCl2:log(N)-crop_type:log(OC)-log(OC):log(EC)-K:log(EC)-P:soil_temp_yearly-P:season-P:prev_soil_water-K:CaCl2-crop_type:log(EC)-P:CaCl2-CaCl2:prev_air_temp-K:soil_type-K:log(N)-climate:prev_air_temp-K:soil_temp_yearly-soil_temp_yearly:log(N)-soil_type:prev_soil_temp-prev_soil_water:log(N)-soil_type:log(N)-climate:log(N)-soil_temp_yearly:prev_air_temp-climate:prev_soil_temp-log(N):log(EC)-crop_type:CaCl2-soil_type:air_temp_yearly-season:soil_type,data=train_dat3)
+
+# landsat 8 model results with two mixed years for test and train set (2015,2018) resultsta = test_dat),NDVI=test_dat$NDVI)
+#model_lm3=update(model_lm2,~.-season:soil_temp_yearly-P:crop_type-K:crop_type-prev_soil_temp:log(OC)-prev_air_temp:log(OC)-soil_water_yearly:prev_air_temp-P:soil_water_yearly-P:soil_temp_yearly-P:air_temp_yearly-prev_soil_water:log(OC)-CaCl2:log(OC)-CaCl2:prev_soil_temp-CaCl2:prev_air_temp-climate:prev_soil_water-climate:prev_soil_temp-soil_temp_yearly:prev_soil_water-climate:prev_air_temp-crop_type:air_temp_yearly-K:P-P:log(OC)-CaCl2:log(N)-soil_water_yearly:log(OC)-soil_temp_yearly:log(OC)-soil_type:log(N)-soil_type:log(EC)-soil_temp_yearly:log(EC)-P:season-soil_water_yearly:log(EC)-prev_soil_water:log(EC)-K:log(EC)-air_temp_yearly:prev_air_temp-season:air_temp_yearly-soil_temp_yearly:prev_air_temp-K:soil_water_yearly-climate:soil_temp_yearly-climate:air_temp_yearly-K:prev_soil_water-climate:CaCl2-prev_soil_water:log(N)-crop_type:log(OC)-crop_type:CaCl2-crop_type:log(EC)-CaCl2:soil_temp_yearly-CaCl2:soil_water_yearly-soil_type:soil_water_yearly-K:soil_type-season:prev_soil_temp-crop_type:soil_type-soil_type:prev_soil_water-climate:soil_water_yearly-soil_water_yearly:log(N)-soil_temp_yearly:log(N)-air_temp_yearly:log(N)-air_temp_yearly:log(OC)-P:climate-CaCl2:prev_soil_water-soil_type:CaCl2-P:prev_soil_water-season:log(EC)-log(OC):log(EC)-log(OC):log(N)-K:climate-log(N):log(EC),data=train_dat2)
+
+
+# for manual removal
+ss=drop1(model_lm3,test = "Chi")
+var_to_remove <- rownames(ss)[which.max(ss$`Pr(>Chi)`)]
+print(var_to_remove)
+print(ss)
+
+xtable::xtable(ss)
+
+anova(model_lm3)
+par(mfrow=c(1,2))
+plot(model_lm,which = c(1,2))
+mtext("Model Diagnostics (model E-1)", side = 3, line = - 2, outer = TRUE)
+
+# do model preds on full data and test data
+pred_lm_test=predict(model_lm3,test_dat3)
+
+
+library(Metrics)
+plot(pred_lm_test,test_dat3$NDVI)
+rmse(pred_lm_test,test_dat3$NDVI)
+1-rmse(pred_lm_test,test_dat3$NDVI)^2/var(test_dat3$NDVI)
+
+model_lm_full=update(model_lm3,~.,data=dat1)
+pred_lm_full=predict(model_lm_full,dat1)
+rmse(pred_lm_full,dat1$NDVI)
+summary(model_lm_full)
+1-rmse(pred_lm_full,dat1$NDVI)^2/var(dat1$NDVI)
+
+
+preds_test=data.frame(NDVI_pred=predict(model_lm3,newdata = test_dat1),NDVI=test_dat1$NDVI)
+preds_full=data.frame(NDVI_pred=predict(model_lm3,newdata = dat1),NDVI=dat1$NDVI)
+# plot linear model test and full data set preds vs actual
+p1=ggplot(preds_test, aes(x = NDVI_pred, y = NDVI)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed", size = 1) +
+  # Add labels and customize the plot
+  labs(x = "Predicted NDVI", y = "Observed NDVI", title = "Observed NDVI vs. Predicted NDVI (test set), 2018 Landsat 8")+
+  theme(plot.title = element_text(size = 18),
+        axis.text=element_text(size=14),
+        axis.text.x = element_text(size = 16),
+        axis.title.x = element_text(size = 16),
+        axis.title.y = element_text(size = 16))
+
+p2=ggplot(preds_full, aes(x = NDVI_pred, y = NDVI)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed", size = 1) +
+  # Add labels and customize the plot
+  labs(x = "Predicted NDVI", y = "Observed NDVI", title = "Observed NDVI vs. Predicted NDVI (full dataset), 2018 Sentinel-2")+
+  theme(plot.title = element_text(size = 18),
+        axis.text=element_text(size=14),
+        axis.text.x = element_text(size = 16),
+        axis.title.x = element_text(size = 16),
+        axis.title.y = element_text(size = 16))
+
+combined_plot <- p1 + p2 +
+  plot_layout(ncol = 1, guides = "collect") +  # Stack plots in one column and collect legends
+  plot_annotation(
+    title = "Modelling NDVI with Linear regression model (2018 Sentinel-2 dataset)  ",
+    tag_levels = "A",  # Automatically tag subplots as (A), (B), (C)
+    theme = theme(plot.title = element_text(size = 18, hjust = 0.5))
+  ) &
+  theme(legend.position = "bottom")  # Set shared legend to bottom
+
+print(combined_plot)
+
+#rmse(pred_lm[-which(is.na(pred_lm)==TRUE)],test_dat$NDVI[-which(is.na(pred_lm)==TRUE)])
+#rmse(pred_lm_full[-which(is.na(pred_lm_full)==TRUE)],dat_2018_sen2_cleaned$NDVI[-which(is.na(pred_lm_full)==TRUE)])
+
+# try with an RF model instead
+library(randomForest)
+library(ranger)
+
+param_grid=expand.grid(mtry = c(1:10),
+                       splitrule = c( "variance"),
+                       min.node.size = c(5, 10, 15))
+cv_scheme <- trainControl(method = "repeatedcv",
+                          repeats = 5,
+                          number = 5,
+                          verboseIter = FALSE)
+#x=train_dat[,-c(6,9,11,13,21,22)] # get rid of dummy vars and IDs, dates and month
+x=train_dat3[,-c(6,9,11,13,21)] # get rid of dummy vars and IDs, dates and month
+x$year=NULL
+x$climate_full=NULL
+y=train_dat3[,6]
+
+models_50=list()
+for (ntree in c(200,400,800,1600)){
+  set.seed(123)
+  rf_model <- train(y=y,
+                    x=x,
+                    method = "ranger",
+                    trControl = cv_scheme,
+                    tuneGrid = param_grid,
+                    num.trees=ntree,
+                    max.depth=50)
+  name=paste0(ntree,"_tr_model")
+  models_50[[name]]=rf_model
+}
+
+models_500=list()
+for (ntree in c(200,400,800,1600)){
+  set.seed(123)
+  rf_model <- train(y=y,
+                    x=x,
+                    method = "ranger",
+                    trControl = cv_scheme,
+                    tuneGrid = param_grid,
+                    num.trees=ntree,
+                    max.depth=500)
+  name=paste0(ntree,"_tr_model")
+  models_500[[name]]=rf_model
+}
+
+models_1000=list()
+for (ntree in c(200,400,800,1600)){
+  set.seed(123)
+  rf_model <- train(y=y,
+                    x=x,
+                    method = "ranger",
+                    trControl = cv_scheme,
+                    tuneGrid = param_grid,
+                    num.trees=ntree,
+                    max.depth=1000)
+  name=paste0(ntree,"_tr_model")
+  models_1000[[name]]=rf_model
+}
+
+
+
+ggplot(models_50$"200_tr_model")+ggtitle("Random forest model tunning results Ntrees=200")
+ggplot(models_50$"400_tr_model")+ggtitle("Random forest model tunning results Ntrees=400")
+ggplot(models_50$"800_tr_model")+ggtitle("Random forest model tunning results Ntrees=800")
+ggplot(models_50$"1600_tr_model")+ggtitle("Random forest model tunning results Ntrees=1600")
+
+# find the best model parameters (replcae max node with 50, 100 and 200)
+idx_min=which.min(models_1000$"1600_tr_model"$results$RMSE)
+rmse_1600_1000=models_1000$"1600_tr_model"$results$RMSE[idx_min]
+
+idx_min=which.min(models_50$"1600_tr_model"$results$RMSE)
+rmse_1600_50=models_50$"1600_tr_model"$results$RMSE[idx_min]
+
+idx_min=which.min(models_500$"1600_tr_model"$results$RMSE)
+rmse_1600_500=models_500$"1600_tr_model"$results$RMSE[idx_min]
+
+idx_min=which.min(models_1000$"800_tr_model"$results$RMSE)
+rmse_800_1000=models_1000$"800_tr_model"$results$RMSE[idx_min]
+
+idx_min=which.min(models_50$"800_tr_model"$results$RMSE)
+rmse_800_50=models_50$"800_tr_model"$results$RMSE[idx_min]
+
+idx_min=which.min(models_500$"800_tr_model"$results$RMSE)
+rmse_800_500=models_500$"800_tr_model"$results$RMSE[idx_min]
+
+idx_min=which.min(models_1000$"400_tr_model"$results$RMSE)
+rmse_400_1000=models_1000$"400_tr_model"$results$RMSE[idx_min]
+
+idx_min=which.min(models_50$"400_tr_model"$results$RMSE)
+rmse_400_50=models_50$"400_tr_model"$results$RMSE[idx_min]
+
+idx_min=which.min(models_500$"400_tr_model"$results$RMSE)
+rmse_400_500=models_500$"400_tr_model"$results$RMSE[idx_min]
+
+idx_min=which.min(models_1000$"200_tr_model"$results$RMSE)
+rmse_200_1000=models_1000$"800_tr_model"$results$RMSE[idx_min]
+
+idx_min=which.min(models_50$"200_tr_model"$results$RMSE)
+rmse_200_50=models_50$"200_tr_model"$results$RMSE[idx_min]
+
+idx_min=which.min(models_500$"200_tr_model"$results$RMSE)
+rmse_200_500=models_500$"200_tr_model"$results$RMSE[idx_min]
+
+#idx_min=which.min(models_50$"200_tr_model"$results$RMSE)
+#rmse_200_200=models_50$"200_tr_model"$results$RMSE[idx_min]
+
+best_rmse_idx=which.min(c(rmse_200_500,rmse_200_50,rmse_200_1000,
+                          rmse_400_500,rmse_400_50,rmse_200_1000,
+                          rmse_800_500,rmse_800_50,rmse_800_1000,
+                          rmse_1600_50,rmse_1600_500,rmse_1600_1000))
+
+# take the best model and find hyper parms
+idx_min=which.min(models_50$"1600_tr_model"$results$RMSE)
+best_mtry=models_50$"1600_tr_model"$results$mtry[idx_min]
+best_node=models_50$"1600_tr_model"$results$min.node.size[idx_min]
+
+# model based on traing data rmse_200_50 0.1591199
+set.seed(123)#-crop_type_natural-climate_full
+model_RF=randomForest(NDVI~.-crop_type_natural-climate_full-date-ID-month-OC+log(OC)-N+log(N)-EC+log(EC),data=na.omit(train_dat3),ntree=1600,nodesize=best_node,mtry=best_mtry,maxnodes=50,importance=F)
+
+pred_RF_test=predict(model_RF,test_dat3)
+pred_RF_train=predict(model_RF,train_dat3)
+
+plot(c(pred_RF_test),test_dat3$NDVI)
+rmse(na.omit(c(pred_RF_test)),na.omit(test_dat3$NDVI))
+1-rmse(na.omit(c(pred_RF_test)),na.omit(test_dat2$NDVI))^2/var(test_dat2$NDVI)
+
+rmse(na.omit(c(pred_RF_train)),na.omit(train_dat3$NDVI))
+1-rmse(na.omit(c(pred_RF_train)),na.omit(train_dat3$NDVI))^2/var(train_dat3$NDVI)
+
+preds_test=data.frame(NDVI_pred=predict(model_RF,newdata = test_dat3),NDVI=test_dat3$NDVI)
+
+
+# Create the fancy scatter plot
+p1=ggplot(preds_test, aes(x = NDVI_pred, y = NDVI)) +
+  geom_point() +
+  # Add labels and customize the plot
+  labs(x = "Predicted NDVI", y = "Observed NDVI", title =  "Observed NDVI vs. Predicted NDVI (test dataset),model A-2")+
+  geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed", size = 1) +
+  theme(plot.title = element_text(size = 16),
+        axis.text=element_text(size=12),
+        axis.text.x = element_text(size = 14),
+        axis.title.x = element_text(size = 14),
+        axis.title.y = element_text(size = 14))
+
+
+set.seed(123) #
+model_RF=randomForest(NDVI~.-climate_full-crop_type_natural-year-date-ID-month-OC+log(OC)-N+log(N)-EC+log(EC),data=na.omit(dat1),ntree=1600,nodesize=best_node,mtry=best_mtry,maxnodes=50,importance=T)
+pred_RF=predict(model_RF,na.omit(dat1))
+rmse(na.omit(c(pred_RF)),na.omit(dat1$NDVI))
+1-rmse(na.omit(c(pred_RF)),na.omit(dat1$NDVI))^2/var(dat1$NDVI)
+
+# varible importance plot
+V=varImp(model_RF,scale=TRUE)
+# nicer names
+rownames(V)=c("Potassium","Phosphorus", "Climate zone","Crop type","Seasonality","Soil type","CaCl2",
+              "Soil temperature","Soil moisture",
+              "Air temperature","Air temperature prior","Soil temperature prior","Soil moisture prior","Organic carbon","Nitrogen",
+              "Electric Conductivity")
+
+ggplot2::ggplot(V, aes(x=reorder(rownames(V),Overall), y=Overall)) +
+  geom_point( color="blue", size=4, alpha=0.6)+
+  geom_segment( aes(x=rownames(V), xend=rownames(V), y=0, yend=Overall), 
+                color='skyblue') +
+  ggtitle("Varible Importance plot (model D-2)")+
+  xlab('Variable')+
+  ylab('%IncMSE')+
+  coord_flip() +
+  theme(plot.title = element_text(size = 16),
+        axis.text=element_text(size=12),
+        axis.text.x = element_text(size = 14),
+        axis.title.x = element_text(size = 14),
+        axis.title.y = element_text(size = 14))
+
+# model diagnostics plots
+# Predict fitted values
+fitted_values <- predict(model_RF,newdata = dat)
+
+# Calculate residuals
+residuals <- dat$NDVI - fitted_values
+
+# Add fitted values and residuals to the dataset
+result1=dat
+result1$fitted <- fitted_values
+result1$residuals <- residuals
+
+result1$N=log(result1$N)
+result1$OC=log(result1$OC)
+result1$EC=log(result1$EC)
+result1$K=log(result1$K)
+#result1$P=log(result1$P)
+
+result1=result1[-which(result1$P==0.0),]
+result1$P=log(result1$P)
+
+library(ggplot2)
+
+for (var in names(result1)) {
+  if (is.factor(result1[[var]]) || is.character(result1[[var]])) {  # Check if the variable is categorical
+    p <- ggplot(result1, aes_string(x = var, y = "residuals")) +
+      geom_boxplot(alpha = 0.6) +  # Use boxplot for categorical predictors
+      geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+      labs(title = paste("Residuals vs", var), x = var, y = "Residuals")
+    print(p)
+  } else {  # Handle non-categorical variables
+    p <- ggplot(result1, aes_string(x = var, y = "residuals")) +
+      geom_point(alpha = 0.6) +  # Use scatter plot for non-categorical predictors
+     # geom_smooth(method = "lm", se = FALSE, color = "blue", linetype = "dotted") +
+      geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+      labs(title = paste("Residuals vs", var), x = var, y = "Residuals")
+    print(p)
+  }
+}
+
+# get predictions for the corrected NDVI
+preds_all=data.frame(NDVI_pred=predict(model_RF,newdata = dat))
+
+pred_res_all=cbind(dat,preds_all)
+
+cor_NDVI=na.omit(dat$NDVI)-preds_all$NDVI_pred
+
+new_result=cbind(cor_NDVI,dat)
+
+# Create the scatter plot
+p2=ggplot(pred_res_all, aes(x = NDVI_pred, y = NDVI)) +
+  geom_point() +
+  # Add labels and customize the plot
+  labs(x = "Predicted NDVI", y = "Observed NDVI", title =  "Observed NDVI vs. Predicted NDVI (full dataset), model A-2")+
+  geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed", size = 1) +
+  theme(plot.title = element_text(size = 16),
+        axis.text=element_text(size=12),
+        axis.text.x = element_text(size = 14),
+        axis.title.x = element_text(size = 14),
+        axis.title.y = element_text(size = 14))
+
+combined_plot <- p1 + p2 +
+  plot_layout(ncol = 1, guides = "collect") +  # Stack plots in one column and collect legends
+  plot_annotation(
+    title = "Modelling NDVI with Random Forest model (model A-2)  ",
+    tag_levels = "A",  # Automatically tag subplots as (A), (B), (C)
+    theme = theme(plot.title = element_text(size = 18, hjust = 0.5))
+  ) &
+  theme(legend.position = "bottom")  # Set shared legend to bottom
+
+print(combined_plot)
+
+# correct the NDVI values
 # find where biosubseet and corrected NDVI values matches
-idx_subset=which(new_result$ID %in% bio_subset_hc_count$ID )
+new_result1=new_result[which(new_result$year=="2018"),]
+idx_subset=which(new_result1$ID %in% bio_subset_hc_count$ID )
 
-bio_subset_hc_count$NDVI_cor=new_result$cor_NDVI[idx_subset]
 
-#ID_X=bio_subset_hc_count$ID
+bio_subset_hc_count$NDVI_cor=c(new_result1$cor_NDVI[idx_subset])
 
 # for handling outliers when investigating wheat (skip for all crops)
-clust_num="2" # change cluster number to 1, 2 and 3 when doing this (store in idx_total1, idx_total2 and idx_total3)
-IQR_c2=IQR(bio_subset_hc_count[which(bio_subset_hc_count$cluster==clust_num),]$NDVI_cor)
-lower_lim=quantile(bio_subset_hc_count[which(bio_subset_hc_count$cluster==clust_num),]$NDVI_cor,0.25)-1.5*IQR_c2
-upper_lim=quantile(bio_subset_hc_count[which(bio_subset_hc_count$cluster==clust_num),]$NDVI_cor,0.75)+1.5*IQR_c2
+clust_num="1" # change cluster number to 1, 2 and 3 when doing this (store in idx_total1, idx_total2 and idx_total3)
+IQR_c2=IQR(bio_subset_hc_count[which(bio_subset_hc_count$cluster==clust_num),]$NDVI_cor,na.rm = T)
+lower_lim=quantile(bio_subset_hc_count[which(bio_subset_hc_count$cluster==clust_num),]$NDVI_cor,0.25,na.rm = T)-1.5*IQR_c2
+upper_lim=quantile(bio_subset_hc_count[which(bio_subset_hc_count$cluster==clust_num),]$NDVI_cor,0.75,na.rm = T)+1.5*IQR_c2
 
 idx_upper=which(bio_subset_hc_count[which(bio_subset_hc_count$cluster==clust_num),]$NDVI_cor>upper_lim)
 idx_upper_barcode=bio_subset_hc_count[which(bio_subset_hc_count$cluster==clust_num),]$barcode_id[idx_upper]
@@ -556,26 +1478,28 @@ idx_total2=c(idx_lower_barcode,idx_upper_barcode)
 idx_total3=c(idx_lower_barcode,idx_upper_barcode)
 
 
-idx_total=c(idx_total1,idx_total2)#,idx_total3)
+idx_total=c(idx_total1,idx_total2)
 
 idx_out=which(bio_subset_hc_count$barcode_id %in% idx_total) # apply to data when investigating wheat
 
 #### view effects of NDVI corrections #### 
+
 # view box plots (set as bio_subset_hc_count[-idx_out,] when investigating wheat)
 ggplot(data = bio_subset_hc_count[-idx_out,], aes(x = factor(cluster), y = NDVI_cor, fill = factor(cluster))) +
   geom_boxplot() +
-  labs(title = "Boxplot of corrected NDVI by Cluster (wheat)",
+  labs(title = "Model D-2, Residual NDVI by Cluster (p-value 0.03)",
        x = "Cluster",
-       y = "Corrected NDVI",
+       y = "NDVI",
        color = "Cluster")+
-  scale_fill_manual(values = c("blue", "orange","red"),name="Cluster (wheat)")+
+  scale_fill_manual(values = c("blue", "orange","red"),name="Cluster")+
   theme(plot.title = element_text(size = 16),
         axis.text=element_text(size=12),
         axis.text.x = element_text(size = 14),
         axis.title.x = element_text(size = 14),
         axis.title.y = element_text(size = 14))
 
-res=lm(NDVI_cor~as.factor(cluster),data=bio_subset_hc_count[-idx_out,]) #[-idx_out,], insert when investigating wheat
+
+res=lm(NDVI_cor~as.factor(cluster),data=bio_subset_hc_count[-idx_out,],na.action = na.exclude)#, insert when investigating wheat
 anova(res)
 
 
@@ -585,7 +1509,7 @@ anova(res)
 library(readr)
 setwd("~/Desktop/soil data analysis/bio_data") # set your wd
 #genus_dat=read_csv("genus_dat_binary.csv")
-genus_dat=read_csv("genus_dat_count.csv")
+#genus_dat=read_csv("genus_dat_count.csv")
 genus_dat=read_csv("genus_data_updated.csv")
 
 genus_dat=genus_dat[,-1]
@@ -596,18 +1520,19 @@ Y=bio_subset$NDVI_cor
 X=genus_dat[index_match,]
 
 # remove outliers
-bio_subset_hc_count=bio_subset_hc_count#[-idx_out,] 
+bio_subset_hc_count=bio_subset_hc_count[-idx_out,] 
+
 
 # cluster 2
-idx_clust2=which(bio_subset_hc_count$cluster==2)
+idx_clust2=which(bio_subset_hc_count2$cluster==2)
 
-idx_clust2_barcode=bio_subset_hc_count[idx_clust2,]$barcode_id
+idx_clust2_barcode=bio_subset_hc_count2[idx_clust2,]$barcode_id
 
 samples_clust2_idx=which(X$barcode %in% idx_clust2_barcode )
 
 samples_clust2=X[samples_clust2_idx,]
 
-c2_croptype=bio_subset_hc_count[idx_clust2,]$crop_type #add crop type as well
+c2_croptype=bio_subset_hc_count2[idx_clust2,]$crop_type #add crop type as well
 
 idx0=which(colSums(samples_clust2)==0)
 
@@ -665,12 +1590,12 @@ p=ggplot(df_long, aes(x = Col_Mean, y =g__, fill = crop_type)) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))+
   scale_fill_manual(values = c("blue", "orange","red"),name="Crop type")+
- # annotate("text", x = Inf, y = Inf, label = "(B)", vjust = 1.4, hjust = 1.2)
+  # annotate("text", x = Inf, y = Inf, label = "(B)", vjust = 1.4, hjust = 1.2)
   theme(plot.title = element_text(size = 16),
-      axis.text=element_text(size=12),
-      axis.text.x = element_text(size = 14),
-      axis.title.x = element_text(size = 14),
-      axis.title.y = element_text(size = 14))
+        axis.text=element_text(size=12),
+        axis.text.x = element_text(size = 14),
+        axis.title.x = element_text(size = 14),
+        axis.title.y = element_text(size = 14))
 library(cowplot)
 p2=add_sub(p, "(B)", y  = 0, vjust = 0)
 ggdraw(p2)
@@ -864,7 +1789,7 @@ Function = function(input, index){
   Input = input[index]
   Stat = IQR(Input,na.rm=TRUE)
   return(Stat)
-  }
+}
 
 
 
@@ -949,7 +1874,7 @@ boot_matrix_clust2$Zero=as.factor(boot_matrix_clust2$Zero)
 p2_CI=ggplot(boot_matrix_clust2) +
   geom_point(aes(x = mean, y = genus_no, color=Zero)) +
   geom_segment(aes(y = genus_no, yend = genus_no, x = CI_lower_p, xend = CI_upper_p, 
-                  color=Zero)) +
+                   color=Zero)) +
   labs(
     x = expression("IQR of relative abudance based OTU counts"),
     y = "Genus ID",
@@ -1072,10 +1997,10 @@ lambdagrid_mult <- function(lambda.min,lambda.max,nr.gridpoints){
 }
 
 screen_cv.glasso_custom=function (x, include.mean = FALSE, folds = min(10, dim(x)[1]), 
-          length.lambda = 20, lambdamin.ratio = ifelse(ncol(x) > nrow(x), 
-                                                       0.01, 0.001), penalize.diagonal = FALSE, trunc.method = "linear.growth", 
-          trunc.k = 5, plot.it = FALSE, se = FALSE, use.package = "huge", 
-          verbose = FALSE) 
+                                  length.lambda = 20, lambdamin.ratio = ifelse(ncol(x) > nrow(x), 
+                                                                               0.01, 0.001), penalize.diagonal = FALSE, trunc.method = "linear.growth", 
+                                  trunc.k = 5, plot.it = FALSE, se = FALSE, use.package = "huge", 
+                                  verbose = FALSE) 
 {
   if (dim(x)[1] < 5) 
     stop("Sample size too small to perform cross-validation")
@@ -1278,6 +2203,7 @@ inf_cluster3=sort(influential::ivi(g),decreasing = T)
 inf_cluster1[1:10]
 inf_cluster2[1:10]
 inf_cluster3[1:10]
+
 
 
 
